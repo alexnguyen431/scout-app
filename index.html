@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SF Pro: use system stack (-apple-system on Apple = SF Pro); no webfont needed on macOS/iOS -->
+    <title>Scout</title>
+    <style>
+      /* 13–16 inch screens: columns flex to fill width, no horizontal scroll */
+      @media (min-width: 1280px) and (max-width: 1920px) {
+        .kanban-scroll-container { overflow-x: hidden !important; }
+        .kanban-header-row,
+        .kanban-scroll-row { width: 100% !important; min-width: 0 !important; }
+        .kanban-column { flex: 1 1 0% !important; min-width: 0 !important; width: auto !important; }
+      }
+      /* Outside 13–16 inch range: fixed column widths, horizontal scroll */
+      @media (max-width: 1279px), (min-width: 1921px) {
+        .kanban-header-row,
+        .kanban-scroll-row { width: max-content !important; min-width: 100% !important; }
+        .kanban-column { flex: 0 0 auto !important; min-width: 300px !important; width: 300px !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
