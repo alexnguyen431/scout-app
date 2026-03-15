@@ -735,9 +735,16 @@ function getCss(T, isDark) {
     },
     sidebar: { width: 220, minWidth: 220, background: T.sidebarBg, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", padding: "20px 12px" },
     logo: { fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: T.text, letterSpacing: "-0.02em", padding: "0 8px 0", marginBottom: 0, display: "flex", alignItems: "center", gap: 0 },
+    bottomNav: {
+      wrapper: { position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", justifyContent: "center", padding: "12px 16px max(12px, env(safe-area-inset-bottom))", zIndex: 50, pointerEvents: "none" },
+      island: { pointerEvents: "auto", display: "flex", alignItems: "center", gap: 4, padding: "8px 12px 8px 12px", background: isDark ? "rgba(18,18,18,0.85)" : "rgba(255,255,255,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`, borderRadius: 100, boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.25)" : "0 4px 24px rgba(0,0,0,0.06)", fontFamily: FONT_TEXT },
+      navItem: (on) => ({ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 18, border: "none", cursor: "pointer", fontSize: 14, fontWeight: on ? 600 : 500, color: on ? T.text : T.textSec, background: on ? (isDark ? T.surfaceHover : "rgba(0,0,0,0.06)") : "transparent", transition: "all 0.15s", fontFamily: FONT_TEXT }),
+      navDivider: { width: 1, alignSelf: "stretch", background: T.border, margin: "4px 4px 4px 8px", borderRadius: 1 },
+      themeBtn: { display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 18, border: "none", cursor: "pointer", background: "transparent", color: T.textSec, transition: "all 0.15s" },
+    },
     navBtn: (on) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: on ? 600 : 400, color: on ? T.text : T.textSec, background: on ? (isDark ? T.surface : T.surfaceHover) : "transparent", border: "none", width: "100%", textAlign: "left", transition: "all 0.15s", letterSpacing: "-0.01em", fontFamily: FONT_TEXT }),
     main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-    header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: `1px solid ${T.border}`, minHeight: 58 },
+    header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: `1px solid ${T.border}`, minHeight: 58 },
     headerTitle: { fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: T.text, letterSpacing: "-0.02em" },
     btn: (v = "primary") => ({
       display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: "pointer", border: "none", transition: "all 0.15s", letterSpacing: "-0.01em", fontFamily: FONT_TEXT,
@@ -756,7 +763,7 @@ function getCss(T, isDark) {
     input: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT, letterSpacing: "-0.01em" },
     textarea: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: T.text, outline: "none", resize: "vertical", minHeight: 110, fontFamily: FONT_TEXT, boxSizing: "border-box", lineHeight: 1.6, letterSpacing: "-0.01em" },
     select: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT },
-    label: { display: "block", fontSize: 12, fontWeight: 600, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6, fontFamily: FONT_TEXT },
+    label: { display: "block", fontSize: 12, fontWeight: 600, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10, fontFamily: FONT_TEXT },
     tag: { display: "inline-flex", padding: "3px 9px", borderRadius: 6, fontSize: 12, background: T.surfaceHover, color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     pill: { display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     overlay: { position: "fixed", inset: 0, background: T.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
@@ -860,14 +867,11 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
     return (
       <div style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
         <div style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
-            <div>
-              {logoBlock}
-              <span style={{ fontSize: 14, color: T.textSec, fontWeight: 400 }}>New key</span>
-            </div>
-            <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <div style={{ ...css.modalTitle, marginBottom: 0 }}>New key</div>
+            <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
           </div>
-          <p style={{ fontSize: 13, color: T.textSec, marginBottom: 16, lineHeight: 1.5 }}>
+          <p style={{ fontSize: 13, color: T.textSec, marginBottom: 16, lineHeight: 1.5, textAlign: "left" }}>
             Save this key to access your board from another device.
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
@@ -885,22 +889,22 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
   return (
     <div style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
       <div style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
-            <div>
-              {logoBlock}
-              <span style={{ fontSize: 14, color: T.textSec, fontWeight: 400 }}>Log in</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ ...css.modalTitle, marginBottom: 0 }}>Sign up / Log in</div>
+              <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
             </div>
-          <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
-        </div>
-        <p style={{ fontSize: 13, color: T.textSec, marginBottom: 20, lineHeight: 1.5 }}>
-          {message || "Your job board is keyed to you. No signup — pick an option below."}
+        <p style={{ fontSize: 13, color: T.textSec, marginBottom: 20, lineHeight: 1.5, textAlign: "left" }}>
+          {message || "Every job board is keyed to a unique ID. No email signup and password needed — pick an option below."}
         </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <button type="button" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14 }} onClick={startFresh}>
-            Start fresh
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+          <div>
+            <div style={css.label}>I'm a new user</div>
+            <button type="button" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14 }} onClick={startFresh}>
+              Generate a new key
+            </button>
+          </div>
           <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 16, marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: T.textSec, marginBottom: 10 }}>I have a key</div>
+            <div style={css.label}>I have a key</div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 type="text"
@@ -962,11 +966,7 @@ function RecoverPage({ theme, onKeyRestored }) {
     <div style={{ ...css.app, alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ ...css.modal, maxWidth: 400 }}>
         <div style={{ marginBottom: 24 }}>
-          <div style={css.logo}>
-            Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
-          </div>
-          {SHOW_LOGO_CREDIT && <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 8, padding: "0 8px 0" }}>by FUTURE-PROOF.XYZ</div>}
-          <span style={{ fontSize: 15, color: T.textSec, fontWeight: 400 }}>Recover key</span>
+          <div style={css.modalTitle}>Recover key</div>
         </div>
         <p style={{ fontSize: 13, color: T.textSec, marginBottom: 20, lineHeight: 1.5 }}>
           Enter the email you added as a recovery address. We’ll send a one-time link to restore your key on this device.
@@ -978,7 +978,7 @@ function RecoverPage({ theme, onKeyRestored }) {
           </div>
           {error && <div style={{ color: "#f87171", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
           {message && <div style={{ color: T.accent, fontSize: 12.5, marginBottom: 12 }}>{message}</div>}
-          <button type="submit" style={{ ...css.btn("primary"), width: "100%" }} disabled={loading}>{loading ? "…" : "Send recovery link"}</button>
+          <button type="submit" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14 }} disabled={loading}>{loading ? "…" : "Send recovery link"}</button>
         </form>
         <p style={{ fontSize: 12, color: T.textMuted, marginTop: 20 }}>
           <a href="/" style={{ color: T.accent, textDecoration: "none" }}>← Back to Scout</a>
@@ -1326,7 +1326,7 @@ export default function App() {
   const [jobLink, setJobLink] = useState("");
   const [jobDesc, setJobDesc] = useState("");
   const [jobData, setJobData] = useState(null);
-  const [jobInputMode, setJobInputMode] = useState("url"); // "url" | "paste" | "manual"
+  const [jobInputMode, setJobInputMode] = useState("url"); // "url" | "manual"
   const [jobPriority, setJobPriority] = useState("medium");
   const [newJobStatus, setNewJobStatus] = useState("interested");
   const [fetchError, setFetchError] = useState(null);
@@ -1750,54 +1750,19 @@ export default function App() {
         [data-dragging="true"],[data-dragging="true"] *{cursor:grabbing !important}
       `}</style>
 
-      {/* Sidebar */}
-      <div style={css.sidebar}>
-        <div style={{ marginBottom: SHOW_LOGO_CREDIT ? 0 : 24 }}>
-          <div style={css.logo}>
-            Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
-          </div>
-          {SHOW_LOGO_CREDIT && <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 24, padding: "0 8px" }}>by FUTURE-PROOF.XYZ</div>}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {[
-          { id: "board", label: "Board" },
-          { id: "companies", label: "Companies" },
-        ].map(n => (
-          <button key={n.id} style={css.navBtn(view === n.id)} onClick={() => setView(n.id)}>
-            {n.label}
-          </button>
-        ))}
-        </div>
-
-        <div style={{ marginTop: "auto", paddingTop: 16 }}>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            style={{
-              display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", marginBottom: 16,
-              fontSize: 13, fontWeight: 400, color: T.textSec, background: "transparent", border: "none", borderRadius: 10, cursor: "pointer", transition: "all 0.15s",
-            }}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            <span style={{ fontSize: 15 }}>{isDark ? "☀" : "☽"}</span>
-            {isDark ? "Light mode" : "Dark mode"}
-          </button>
-          <div style={{ padding: "14px 12px", background: isDark ? T.surface : T.bg, borderRadius: 12 }}>
-            <div style={{ fontSize: 11, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: 12 }}>Overview</div>
-            {[["Tracked", jobs.length, T.text], ["Active", totalActive, T.accent]].map(([k, v, col]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 13, color: T.textSec, fontWeight: 400, letterSpacing: "-0.01em" }}>{k}</span>
-                <span style={{ fontSize: 13, color: col, fontWeight: 700, letterSpacing: "-0.02em" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* Main */}
       <div style={css.main}>
         <div style={css.header}>
-          <div style={css.headerTitle}>{view === "board" ? "Board" : "Companies"}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
+              <div style={{ ...css.headerTitle, color: T.textMuted }}>{view === "board" ? "Board" : "Companies"}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: T.textSec, fontWeight: 500 }}>
+              <span><span style={{ color: T.textMuted, marginRight: 4 }}>Tracked</span><strong style={{ color: T.text }}>{jobs.length}</strong></span>
+              <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
+            </div>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button style={css.btn("primary")} onClick={() => setModal("addJob")}>+ Add Job</button>
             <div style={{ position: "relative" }}>
@@ -1814,32 +1779,35 @@ export default function App() {
               {keyMenuOpen && (
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setKeyMenuOpen(false)} aria-hidden="true" />
-                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, zIndex: 100, padding: "10px 0" }}>
-                    <div style={{ padding: "8px 12px", fontSize: 11, color: T.textMuted, borderBottom: `1px solid ${T.border}` }}>Access key</div>
-                    <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
-                      <button type="button" style={{ ...css.btn("sec"), padding: "4px 8px", fontSize: 11 }} onClick={() => { copyWithToast(key); setKeyMenuOpen(false); }}>Copy</button>
+                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, zIndex: 100, padding: "14px 14px 12px", boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.25)" : "0 8px 24px rgba(0,0,0,0.08)" }}>
+                    <div style={{ padding: "0 0 10px" }}>
+                      <div style={css.label}>Access key</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
+                        <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setKeyMenuOpen(false); }}>Copy</button>
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
                     </div>
-                    <div style={{ padding: "6px 12px", fontSize: 11, color: T.textMuted }}>Save this key to access Scout from another device.</div>
-                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 8, paddingTop: 8 }} />
-                    <div style={{ padding: "8px 12px" }}>
+                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 12 }} />
+                    <div style={{ paddingTop: 12 }}>
+                      <div style={css.label}>Recovery email</div>
                       {workspaceEmail ? (
-                        <div style={{ fontSize: 12, color: T.textSec }}>
-                          Recovery email: {workspaceEmail}
+                        <div style={{ fontSize: 12, color: T.textSec, marginBottom: 4 }}>
+                          {workspaceEmail}
                           <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ marginLeft: 8, background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11 }}>Remove</button>
                         </div>
                       ) : (
                         <>
-                          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                            <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "6px 10px", fontSize: 12 }} />
-                            <button type="button" style={{ ...css.btn("primary"), padding: "6px 10px", fontSize: 11 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? "…" : "Save"}</button>
+                          <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                            <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 12 }} />
+                            <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap" }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? "…" : "Save"}</button>
                           </div>
-                          <div style={{ fontSize: 10.5, color: T.textMuted }}>If you lose your key, we'll send it to this address.</div>
+                          <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
                         </>
                       )}
                     </div>
-                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 8, paddingTop: 8 }} />
-                    <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
+                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 12, paddingTop: 8 }} />
+                    <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 4 }}>Log out of this device</button>
                   </div>
                 </>
               )}
@@ -1850,7 +1818,7 @@ export default function App() {
                   onClick={() => { setKeyModalMessage(null); setShowKeyModal(true); }}
                   style={{ ...css.btn("sec"), display: "flex", alignItems: "center", gap: 6 }}
                 >
-                  Log in
+                  Sign up / Log in
                 </button>
               )}
             </div>
@@ -1861,11 +1829,15 @@ export default function App() {
           <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
         {/* Board */}
         {view === "board" && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", paddingBottom: 72 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 2, background: isDark ? T.surface : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2 }}>
-                {[["kanban", "⊞"], ["table", "☰"]].map(([mode, icon]) => (
+                {[
+                  ["kanban", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
+                  ["table", <svg key="table" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18M3 15h18" /></svg>],
+                ].map(([mode, icon]) => (
                   <button key={mode} onClick={() => setBoardViewMode(mode)} style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
                     padding: "6px 12px", borderRadius: 6, border: `1px solid ${boardViewMode === mode ? T.border : "transparent"}`, cursor: "pointer", fontSize: 14, transition: "all 0.15s", fontWeight: 500, fontFamily: FONT_TEXT,
                     background: boardViewMode === mode ? T.surfaceHover : "transparent",
                     color: boardViewMode === mode ? T.text : T.textMuted,
@@ -1877,17 +1849,21 @@ export default function App() {
                 placeholder="Search company or job title..."
                 value={boardSearch}
                 onChange={(e) => setBoardSearch(e.target.value)}
-                style={{ ...css.input, width: 220, padding: "6px 10px", fontSize: 12 }}
+                style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box" }}
               />
               {(() => {
                 const selectBaseStyle = {
                   ...css.select,
                   width: "auto",
-                  padding: "6px 30px 6px 10px",
+                  height: 38,
+                  lineHeight: "38px",
+                  padding: "0 30px 0 10px",
                   fontSize: 12,
                   minWidth: 90,
+                  borderRadius: 8,
                   appearance: "none",
                   WebkitAppearance: "none",
+                  boxSizing: "border-box",
                 };
                 const selectWrapperStyle = { position: "relative", display: "inline-block" };
                 const chevronOverlayStyle = { position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" };
@@ -2336,7 +2312,7 @@ export default function App() {
 
         {/* Companies */}
         {view === "companies" && (
-          <div style={{ flex: 1, padding: "20px 24px" }}>
+          <div style={{ flex: 1, padding: "20px 24px", paddingBottom: 72 }}>
             {companies.length === 0 ? (
               <div style={{ color: T.textMuted, fontSize: 14, padding: 48, fontWeight: 500, letterSpacing: "-0.01em" }}>No companies yet. Add a job to the board to get started.</div>
             ) : (
@@ -2384,7 +2360,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Footer: follows content; when empty/short, sits at bottom of screen (~15% cut off) */}
+        {/* Footer: big Scout watermark; extends to very bottom of screen */}
         <div style={{
           width: "100%",
           flexShrink: 0,
@@ -2409,6 +2385,24 @@ export default function App() {
           }}>Scout</span>
         </div>
           </div>
+        </div>
+      </div>
+
+      {/* Bottom navigation (floating island) */}
+      <div style={css.bottomNav.wrapper}>
+        <div style={css.bottomNav.island}>
+          <button type="button" style={css.bottomNav.navItem(view === "board")} onClick={() => setView("board")} title="Board">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+            Board
+          </button>
+          <button type="button" style={css.bottomNav.navItem(view === "companies")} onClick={() => setView("companies")} title="Companies">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M2 20h20" /><path d="M5 20V8l7-4 7 4v12" /><path d="M9 20v-6h6v6" /></svg>
+            Companies
+          </button>
+          <div style={css.bottomNav.navDivider} />
+          <button type="button" style={css.bottomNav.themeBtn} onClick={toggleTheme} title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+            {isDark ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>}
+          </button>
         </div>
       </div>
 
@@ -2467,7 +2461,7 @@ export default function App() {
       {modal === "addCo" && (
         <div style={css.overlay} onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div style={css.modal}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
               <div style={css.modalTitle}>Add Company</div>
               <button type="button" onClick={() => { setModal(null); setCoName(""); setCoData(null); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
             </div>
@@ -2519,13 +2513,12 @@ export default function App() {
         return (
         <div style={css.overlay} onClick={e => e.target === e.currentTarget && closeAddJobModal()}>
           <div style={css.modal}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
-              <div style={css.modalTitle}>Add Job</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ ...css.modalTitle, marginBottom: 0 }}>Add Job</div>
               <button type="button" onClick={closeAddJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
             </div>
-            <div style={{ fontSize: 12.5, color: T.textSec, marginBottom: 18, lineHeight: 1.45, display: "flex", alignItems: "flex-start", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>✨</span>
-              <span>Import from a link or paste, or fill in the details yourself.</span>
+            <div style={{ fontSize: 12.5, color: T.textSec, marginBottom: 18, lineHeight: 1.45 }}>
+              Import a job posting from a link, or fill in the details yourself.
             </div>
 
             {/* Tab toggle */}
@@ -2538,7 +2531,7 @@ export default function App() {
               borderRadius: 12,
               padding: 4,
             }}>
-              {[["url", "From URL"], ["paste", "Paste Description"], ["manual", "Fill in details"]].map(([mode, label]) => (
+              {[["url", "From URL"], ["manual", "Fill in details"]].map(([mode, label]) => (
                 <button key={mode} onClick={() => { setJobInputMode(mode); setJobData(null); }} style={{
                   flex: 1, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
                   fontSize: 12.5, fontWeight: 500, transition: "all 0.2s", fontFamily: FONT_TEXT,
@@ -2609,15 +2602,15 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            ) : jobInputMode === "url" ? (
+            ) : (
               <div style={{ marginBottom: 14 }}>
                 <label style={css.label}>Job Posting URL</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
-                    style={{ ...css.input, borderColor: fetchError ? "#f87171" : undefined }}
+                    style={{ ...css.input, border: fetchError ? `1px solid #f87171` : `1px solid ${T.border}` }}
                     value={jobLink}
                     onChange={e => { setJobLink(e.target.value); setJobData(null); setFetchError(null); }}
-                    placeholder="https://notion.so/jobs/..."
+                    placeholder="e.g. https://stripe.com/jobs/listing/product-designer/..."
                     onKeyDown={e => e.key === "Enter" && extractFromUrl()}
                   />
                   <button style={{ ...css.btn("primary"), whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={extractFromUrl} disabled={loading || !jobLink.trim()}>
@@ -2645,13 +2638,9 @@ export default function App() {
                 )}
                 {fetchError === "blocked" && (
                   <div style={{ marginTop: 10, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 6, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 500, marginBottom: 4 }}>
+                    <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 500 }}>
                       {isLinkedInHost(jobLink) ? "LinkedIn requires login to view job postings." : "This site blocks external access."}
                     </div>
-                    <div style={{ fontSize: 12, color: T.textSec, marginBottom: 8 }}>Copy the job description from the page and paste it instead.</div>
-                    <button style={{ ...css.btn("sec"), fontSize: 11.5, padding: "5px 10px" }} onClick={() => { setJobInputMode("paste"); setFetchError(null); }}>
-                      Switch to paste →
-                    </button>
                   </div>
                 )}
                 {fetchError && fetchError !== "blocked" && (
@@ -2659,29 +2648,13 @@ export default function App() {
                     <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 500, marginBottom: 4 }}>
                       {fetchError === "failed" ? "Couldn't find the job posting." : "Import failed"}
                     </div>
-                    <div style={{ fontSize: 12, color: T.textSec, marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: T.textSec }}>
                       {fetchError === "failed"
-                        ? "Couldn't reach or parse this page. The site may require login or block scraping. Paste the description instead."
+                        ? "Couldn't reach or parse this page. The site may require login or block scraping."
                         : fetchError}
                     </div>
-                    <button style={{ ...css.btn("sec"), fontSize: 11.5, padding: "5px 10px" }} onClick={() => { setJobInputMode("paste"); setFetchError(null); }}>
-                      Switch to paste →
-                    </button>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div style={{ marginBottom: 14 }}>
-                <label style={css.label}>Paste Job Description</label>
-                <textarea style={css.textarea} value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste the full job description here..." />
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button style={{ ...css.btn("primary"), flex: 1, justifyContent: "center" }} onClick={() => { setJobData(extractJobFree(jobDesc, {})); }} disabled={!jobDesc.trim()}>
-                    Extract (free)
-                  </button>
-                  <button style={{ ...css.btn("sec"), flex: 1, justifyContent: "center" }} onClick={() => refineWithAI(jobDesc)} disabled={loading || !jobDesc.trim()}>
-                    {loading ? "..." : "Refine with AI"}
-                  </button>
-                </div>
               </div>
             )}
 
@@ -2751,7 +2724,7 @@ export default function App() {
               const btnOnBrand = { background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: headerFg, textDecoration: "none", fontSize: 11.5, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontFamily: FONT_TEXT };
               return (
             <div style={{ background: detailCoColor, color: headerFg, padding: "20px 28px 32px", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {detailCo && (
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
