@@ -671,10 +671,21 @@ async function fetchBrandColor(domain, companyName, headers) {
 function textOnColor() {
   return "#ffffff";
 }
+/** True if hex color is dark (low luminance). Used to fix dark brand icons on dark mode. */
+function isColorDark(hex) {
+  if (!hex || typeof hex !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return false;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance < 0.25;
+}
 
 // SF Pro: Display for headings (≥20pt), Text for body/UI (≤19pt). -apple-system = SF Pro on Apple.
 const FONT_DISPLAY = '"SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif';
 const FONT_TEXT = '"SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif';
+/** Set to true to show "by FUTURE-PROOF.XYZ" under the Scout logo in sidebar and modals. */
+const SHOW_LOGO_CREDIT = false;
 
 const THEMES = {
   dark: {
@@ -713,6 +724,7 @@ function getCss(T, isDark) {
   return {
     app: {
       display: "flex",
+      width: "100%",
       height: "100vh",
       background: T.bg,
       color: T.text,
@@ -841,7 +853,7 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
       <div style={css.logo}>
         Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
       </div>
-      <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, padding: "0 8px 0" }}>by FUTURE-PROOF.XYZ</div>
+      {SHOW_LOGO_CREDIT && <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, padding: "0 8px 0" }}>by FUTURE-PROOF.XYZ</div>}
     </div>
   );
   if (createdKey) {
@@ -953,7 +965,7 @@ function RecoverPage({ theme, onKeyRestored }) {
           <div style={css.logo}>
             Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
           </div>
-          <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 8, padding: "0 8px 0" }}>by FUTURE-PROOF.XYZ</div>
+          {SHOW_LOGO_CREDIT && <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 8, padding: "0 8px 0" }}>by FUTURE-PROOF.XYZ</div>}
           <span style={{ fontSize: 15, color: T.textSec, fontWeight: 400 }}>Recover key</span>
         </div>
         <p style={{ fontSize: 13, color: T.textSec, marginBottom: 20, lineHeight: 1.5 }}>
@@ -999,7 +1011,7 @@ export default function App() {
   const [dragMouse, setDragMouse] = useState(null);
   const [dragGrabOffset, setDragGrabOffset] = useState(null);
   const [dragStartMouse, setDragStartMouse] = useState(null);
-  const transparentDragImageRef = useRef(null);
+  const pendingDragRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [importStep, setImportStep] = useState(null);
   const [boardViewMode, setBoardViewMode] = useState("kanban");
@@ -1094,32 +1106,71 @@ export default function App() {
     };
   }, [resizingColumn]);
 
-  // During card drag, force cursor to grabbing so browser doesn't show plus/copy icon
+  // Mouse-based drag with dead-zone: only start drag after 5px of movement so clicks still open jobs
   useEffect(() => {
-    if (!dragJobId) return;
-    const prev = document.body.style.cursor;
-    document.body.style.cursor = "grabbing";
-    return () => { document.body.style.cursor = prev; };
-  }, [dragJobId]);
+    const DRAG_THRESHOLD = 5;
 
-  // Create transparent drag image to hide default ghost
-  useEffect(() => {
-    if (transparentDragImageRef.current) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    transparentDragImageRef.current = canvas;
-  }, []);
-
-  // Track mouse position during drag for custom preview swing
-  useEffect(() => {
-    if (!dragJobId) return;
-    const onDragOver = (e) => {
-      e.preventDefault();
-      setDragMouse({ x: e.clientX, y: e.clientY });
+    const onMouseMove = (e) => {
+      const p = pendingDragRef.current;
+      if (p && !dragJobId) {
+        const dx = e.clientX - p.startX;
+        const dy = e.clientY - p.startY;
+        if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) {
+          setDragJobId(p.jobId);
+          setDragStartRect(p.rect);
+          setDragGrabOffset(p.grabOffset);
+          setDragStartMouse({ x: p.startX, y: p.startY });
+          setDragMouse({ x: e.clientX, y: e.clientY });
+        }
+        return;
+      }
+      if (dragJobId) {
+        setDragMouse({ x: e.clientX, y: e.clientY });
+        const col = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-kanban-status]");
+        setDragOverCol(col ? col.dataset.kanbanStatus : null);
+      }
     };
-    document.addEventListener("dragover", onDragOver);
-    return () => document.removeEventListener("dragover", onDragOver);
+
+    const onMouseUp = (e) => {
+      if (pendingDragRef.current && !dragJobId) {
+        const p = pendingDragRef.current;
+        pendingDragRef.current = null;
+        const job = jobs.find(j => j.id === p.jobId);
+        if (job) openJob(job);
+        return;
+      }
+      if (dragJobId) {
+        const col = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-kanban-status]");
+        if (col) moveJob(dragJobId, col.dataset.kanbanStatus);
+        setDragJobId(null);
+        setDragOverCol(null);
+        setDragStartRect(null);
+        setDragMouse(null);
+        setDragGrabOffset(null);
+        setDragStartMouse(null);
+      }
+      pendingDragRef.current = null;
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [dragJobId, jobs]);
+
+  // During active drag, set grabbing cursor and disable text selection
+  useEffect(() => {
+    if (!dragJobId) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
   }, [dragJobId]);
 
   useEffect(() => {
@@ -1701,11 +1752,12 @@ export default function App() {
 
       {/* Sidebar */}
       <div style={css.sidebar}>
-        <div style={css.logo}>
-          Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
+        <div style={{ marginBottom: SHOW_LOGO_CREDIT ? 0 : 24 }}>
+          <div style={css.logo}>
+            Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span>
+          </div>
+          {SHOW_LOGO_CREDIT && <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 24, padding: "0 8px" }}>by FUTURE-PROOF.XYZ</div>}
         </div>
-        <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.02em", marginTop: 4, marginBottom: 24, padding: "0 8px" }}>by FUTURE-PROOF.XYZ</div>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {[
           { id: "board", label: "Board" },
@@ -1828,7 +1880,7 @@ export default function App() {
                 style={{ ...css.input, width: 220, padding: "6px 10px", fontSize: 12 }}
               />
               {(() => {
-                const selectChevronStyle = {
+                const selectBaseStyle = {
                   ...css.select,
                   width: "auto",
                   padding: "6px 30px 6px 10px",
@@ -1836,29 +1888,33 @@ export default function App() {
                   minWidth: 90,
                   appearance: "none",
                   WebkitAppearance: "none",
-                  backgroundImage: chevronSvg(T.textSec),
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "right 10px center",
-                  backgroundSize: "10px",
                 };
+                const selectWrapperStyle = { position: "relative", display: "inline-block" };
+                const chevronOverlayStyle = { position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" };
                 return (
               <>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Priority</span>
-                <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ ...selectChevronStyle, minWidth: 90 }}>
-                  <option value="">All</option>
-                  {PRIORITIES.map((pr) => (
-                    <option key={pr.id} value={pr.id}>{pr.label}</option>
-                  ))}
-                </select>
+                <div style={selectWrapperStyle}>
+                  <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ ...selectBaseStyle, minWidth: 90 }}>
+                    <option value="">All</option>
+                    {PRIORITIES.map((pr) => (
+                      <option key={pr.id} value={pr.id}>{pr.label}</option>
+                    ))}
+                  </select>
+                  <span style={chevronOverlayStyle}><ChevronIcon down size={10} color={T.textSec} /></span>
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sort</span>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...selectChevronStyle, minWidth: 100 }}>
-                  <option value="priority">Priority</option>
-                  <option value="date">Date added</option>
-                  <option value="company">Company</option>
-                </select>
+                <div style={selectWrapperStyle}>
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...selectBaseStyle, minWidth: 100 }}>
+                    <option value="priority">Priority</option>
+                    <option value="date">Date added</option>
+                    <option value="company">Company</option>
+                  </select>
+                  <span style={chevronOverlayStyle}><ChevronIcon down size={10} color={T.textSec} /></span>
+                </div>
               </div>
               </>
                 );
@@ -1941,10 +1997,8 @@ export default function App() {
                 <div
                   key={st.id}
                   className="kanban-column"
+                  data-kanban-status={st.id}
                   style={{ minWidth: 300, width: 300, display: "flex", flexDirection: "column", gap: 10 }}
-                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverCol(st.id); }}
-                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol(null); }}
-                  onDrop={e => { e.preventDefault(); if (dragJobId) moveJob(dragJobId, st.id); setDragOverCol(null); setDragJobId(null); }}
                 >
                   {sortJobsForColumn(st.id, byStatus(st.id)).map(job => {
                     const co = getCompany(job.companyId);
@@ -1954,27 +2008,17 @@ export default function App() {
                     return (
                       <div
                         key={job.id}
-                        draggable
-                        onDragStart={e => {
-                          setDragJobId(job.id);
+                        onMouseDown={e => {
+                          if (e.button !== 0) return;
+                          e.preventDefault();
                           const rect = e.currentTarget.getBoundingClientRect();
-                          setDragStartRect({ width: rect.width, height: rect.height });
-                          setDragGrabOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                          setDragStartMouse({ x: e.clientX, y: e.clientY });
-                          setDragMouse({ x: e.clientX, y: e.clientY });
-                          if (transparentDragImageRef.current) {
-                            e.dataTransfer.setDragImage(transparentDragImageRef.current, 0, 0);
-                          }
-                          e.dataTransfer.effectAllowed = "move";
-                          e.dataTransfer.dropEffect = "move";
-                        }}
-                        onDragEnd={() => {
-                          setDragJobId(null);
-                          setDragOverCol(null);
-                          setDragStartRect(null);
-                          setDragMouse(null);
-                          setDragGrabOffset(null);
-                          setDragStartMouse(null);
+                          pendingDragRef.current = {
+                            jobId: job.id,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            rect: { width: rect.width, height: rect.height },
+                            grabOffset: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                          };
                         }}
                         style={{
                           ...css.card,
@@ -1986,7 +2030,6 @@ export default function App() {
                           cursor: "grab",
                           position: "relative",
                         }}
-                        onClick={() => !dragJobId && openJob(job)}
                         onMouseEnter={e => {
                           if (!dragJobId) {
                             e.currentTarget.style.transform = "translateY(-5px)";
@@ -2050,10 +2093,10 @@ export default function App() {
                         style={{
                           border: `2px dashed ${isHovering ? st.color : isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
                           borderRadius: 16,
-                          padding: "12px 14px",
+                          padding: "20px 14px",
                           textAlign: "center",
                           color: isHovering ? st.color : T.textMuted,
-                          fontSize: 13,
+                          fontSize: 14,
                           background: isHovering ? `${st.color}0a` : "transparent",
                           transition: "all 0.2s ease",
                           fontWeight: 500,
@@ -2106,30 +2149,34 @@ export default function App() {
                 else { setTableSortColumn(col); setTableSortDir("asc"); }
               };
               const cellPadding = 32;
-              const pxPerChar = 8;
+              const pxPerChar = 9;
               const contentWidths = (() => {
                 const w = {};
                 TABLE_COLUMNS.forEach(c => {
-                  const labelW = c.label.length * pxPerChar;
-                  let maxW = labelW;
+                  const labelW = c.label.length * pxPerChar + cellPadding;
+                  let contentW = c.label.length * pxPerChar;
                   if (c.id === "company") {
-                    maxW = companyColumnMinWidth;
+                    contentW = Math.max(contentW, companyColumnMinWidth - cellPadding);
                   } else if (c.id === "position") {
-                    tableSorted.forEach(job => { maxW = Math.max(maxW, (job.title || "").length * pxPerChar); });
+                    tableSorted.forEach(job => { contentW = Math.max(contentW, (job.title || "").length * pxPerChar); });
+                    contentW = Math.min(contentW, 320);
                   } else if (c.id === "status") {
-                    tableSorted.forEach(job => { const st = STATUSES.find(s => s.id === jobStatus(job)) || STATUSES[0]; maxW = Math.max(maxW, st.label.length * pxPerChar + 24); });
+                    tableSorted.forEach(job => { const st = STATUSES.find(s => s.id === jobStatus(job)) || STATUSES[0]; contentW = Math.max(contentW, st.label.length * pxPerChar + 24); });
                   } else if (c.id === "priority") {
-                    tableSorted.forEach(job => { const pr = PRIORITIES.find(p => p.id === (job.priority || "medium")); if (pr) maxW = Math.max(maxW, pr.label.length * pxPerChar + 24); });
+                    tableSorted.forEach(job => { const pr = PRIORITIES.find(p => p.id === (job.priority || "medium")); if (pr) contentW = Math.max(contentW, pr.label.length * pxPerChar + 24); });
                   } else if (c.id === "applied") {
-                    tableSorted.forEach(job => { const s = job.applicationDate ? formatDate(job.applicationDate) : "—"; maxW = Math.max(maxW, s.length * pxPerChar); });
+                    tableSorted.forEach(job => { const s = job.applicationDate ? formatDate(job.applicationDate) : "—"; contentW = Math.max(contentW, s.length * pxPerChar); });
                   } else if (c.id === "added") {
-                    tableSorted.forEach(job => { maxW = Math.max(maxW, timeAgo(job.addedAt).length * pxPerChar); });
-                  } else if (c.id === "salary" || c.id === "location" || c.id === "contact") {
-                    tableSorted.forEach(job => { const val = job[c.id] || "—"; maxW = Math.max(maxW, String(val).length * pxPerChar); });
+                    tableSorted.forEach(job => { contentW = Math.max(contentW, timeAgo(job.addedAt).length * pxPerChar); });
+                  } else if (c.id === "location") {
+                    tableSorted.forEach(job => { const val = job.location || "—"; contentW = Math.max(contentW, String(val).length * pxPerChar); });
+                    contentW = Math.min(contentW, 240);
+                  } else if (c.id === "salary" || c.id === "contact") {
+                    tableSorted.forEach(job => { const val = job[c.id] || "—"; contentW = Math.max(contentW, String(val).length * pxPerChar); });
                   } else if (c.id === "link") {
-                    maxW = Math.max(maxW, 56);
+                    contentW = Math.max(contentW, 56);
                   }
-                  w[c.id] = Math.max(cellPadding + (c.id === "company" ? 0 : maxW), c.id === "company" ? maxW : 72);
+                  w[c.id] = Math.max(labelW, contentW + cellPadding, c.id === "company" ? companyColumnMinWidth : 72);
                 });
                 return w;
               })();
@@ -2163,7 +2210,7 @@ export default function App() {
               };
               const getTdStyle = (colId) => {
                 const w = getColumnWidth(colId);
-                return { padding: "12px 16px", fontSize: 13.5, color: T.text, borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)"}`, whiteSpace: "nowrap", minWidth: w, overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "-0.01em", boxSizing: "border-box" };
+                return { padding: "12px 16px", fontSize: 13.5, color: T.text, borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.05)"}`, whiteSpace: "nowrap", minWidth: 0, width: w, overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "-0.01em", boxSizing: "border-box" };
               };
               const tableMinWidth = TABLE_COLUMNS.reduce((s, c) => s + getColumnWidth(c.id), 0);
               return (
@@ -2195,7 +2242,14 @@ export default function App() {
                             <td style={getTdStyle("company")}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                 {co && (
-                                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${coColor}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, color: coColor, flexShrink: 0, boxShadow: "none" }}>
+                                  <div style={{
+                                    width: 28, height: 28, borderRadius: 7,
+                                    background: isDark && isColorDark(coColor) ? "rgba(255,255,255,0.12)" : `${coColor}15`,
+                                    border: isDark && isColorDark(coColor) ? "1px solid rgba(255,255,255,0.2)" : "none",
+                                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700,
+                                    color: isDark && isColorDark(coColor) ? "#fff" : coColor,
+                                    flexShrink: 0, boxShadow: "none",
+                                  }}>
                                     {initials(co.name)}
                                   </div>
                                 )}
@@ -2283,6 +2337,9 @@ export default function App() {
         {/* Companies */}
         {view === "companies" && (
           <div style={{ flex: 1, padding: "20px 24px" }}>
+            {companies.length === 0 ? (
+              <div style={{ color: T.textMuted, fontSize: 14, padding: 48, fontWeight: 500, letterSpacing: "-0.01em" }}>No companies yet. Add a job to the board to get started.</div>
+            ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
               {companies.map(co => {
                 const coColor = getCompanyColorForDisplay(co);
@@ -2322,10 +2379,8 @@ export default function App() {
                   </div>
                 );
               })}
-              {companies.length === 0 && (
-                <div style={{ color: T.textMuted, fontSize: 14, padding: 48, fontWeight: 500, letterSpacing: "-0.01em" }}>No companies yet. Add one to get started.</div>
-              )}
             </div>
+            )}
           </div>
         )}
 
@@ -2357,7 +2412,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Kanban drag preview: follows cursor, swings with cursor as pivot */}
+      {/* Kanban drag preview: pivots on the grab point as you drag */}
       {dragJobId && dragMouse != null && dragStartRect && dragGrabOffset && dragStartMouse && (() => {
         const job = jobs.find(j => j.id === dragJobId);
         if (!job) return null;
