@@ -763,6 +763,62 @@ function normalizeDomain(website) {
   return s || "";
 }
 
+function normalizeCompanyName(name) {
+  if (!name || typeof name !== "string") return "";
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Find existing company by canonical key (domain preferred, else normalized name). */
+function findCompanyByCanonical(companies, { name, website }) {
+  if (!Array.isArray(companies) || (!name && !website)) return null;
+  const domain = normalizeDomain(website);
+  const normName = normalizeCompanyName(name);
+  return companies.find((c) => {
+    if (domain && normalizeDomain(c.website) === domain) return true;
+    if (normName && normalizeCompanyName(c.name) === normName) return true;
+    return false;
+  }) || null;
+}
+
+/** Deduplicate companies by canonical key (domain or normalized name); reassign jobs to kept company. */
+function dedupeCompaniesAndJobs(companies, jobs) {
+  if (!Array.isArray(companies) || companies.length === 0) return { companies, jobs: jobs || [] };
+  const jobList = Array.isArray(jobs) ? jobs : [];
+  const keyFor = (c) => {
+    const domain = normalizeDomain(c.website);
+    if (domain) return `domain:${domain}`;
+    return `name:${normalizeCompanyName(c.name)}`;
+  };
+  const byKey = new Map();
+  const idToKept = new Map();
+  for (const c of companies) {
+    const k = keyFor(c);
+    const existing = byKey.get(k);
+    if (!existing) {
+      byKey.set(k, c);
+      idToKept.set(c.id, c.id);
+    } else {
+      const merged = { ...existing };
+      if ((c.description || "").trim().length > (merged.description || "").trim().length) merged.description = c.description;
+      if ((c.stage || "").trim().length > (merged.stage || "").trim().length) merged.stage = c.stage;
+      if ((c.size || "").trim().length > (merged.size || "").trim().length) merged.size = c.size;
+      if ((c.designTeamSize || "").trim().length > (merged.designTeamSize || "").trim().length) merged.designTeamSize = c.designTeamSize;
+      if ((c.designLeaders || "").trim().length > (merged.designLeaders || "").trim().length) merged.designLeaders = c.designLeaders;
+      if ((c.culture || "").trim().length > (merged.culture || "").trim().length) merged.culture = c.culture;
+      if ((c.website || "").trim() && !(merged.website || "").trim()) merged.website = c.website;
+      if ((c.name || "").trim().length > (merged.name || "").trim().length) merged.name = c.name;
+      byKey.set(k, merged);
+      idToKept.set(c.id, existing.id);
+    }
+  }
+  const deduped = [...byKey.values()];
+  const updatedJobs = jobList.map((j) => {
+    const keptId = idToKept.get(j.companyId);
+    return keptId !== undefined ? { ...j, companyId: keptId } : j;
+  });
+  return { companies: deduped, jobs: updatedJobs };
+}
+
 /**
  * Fetch primary brand color: known list → server cache (Claude once per company) → hash fallback.
  * Server stores result in data/brand_colors.json so we never call Claude twice for the same company.
@@ -1382,8 +1438,12 @@ export default function App() {
         return res.json();
       })
       .then((data) => {
-        if (data && Array.isArray(data.jobs)) setJobs(data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })));
-        if (data && Array.isArray(data.companies)) setCompanies(data.companies);
+        if (!data) return;
+        let jobsList = Array.isArray(data.jobs) ? data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })) : [];
+        let companiesList = Array.isArray(data.companies) ? data.companies : [];
+        const { companies: dedupedCompanies, jobs: dedupedJobs } = dedupeCompaniesAndJobs(companiesList, jobsList);
+        setCompanies(dedupedCompanies);
+        setJobs(dedupedJobs);
       })
       .catch(() => {})
       .finally(() => setDataLoading(false));
@@ -1449,8 +1509,12 @@ export default function App() {
         return r.json();
       })
       .then((data) => {
-        if (data && Array.isArray(data.jobs)) setJobs(data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })));
-        if (data && Array.isArray(data.companies)) setCompanies(data.companies);
+        if (!data) return;
+        let jobsList = Array.isArray(data.jobs) ? data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })) : [];
+        let companiesList = Array.isArray(data.companies) ? data.companies : [];
+        const { companies: dedupedCompanies, jobs: dedupedJobs } = dedupeCompaniesAndJobs(companiesList, jobsList);
+        setCompanies(dedupedCompanies);
+        setJobs(dedupedJobs);
       })
       .catch(() => {})
       .finally(() => setDataLoading(false));
@@ -1751,7 +1815,7 @@ export default function App() {
     let companyId = jobCoId;
     let createdNewCompany = false;
     if (!companyId && jobData.companyName) {
-      const existing = companies.find(c => c.name.toLowerCase() === jobData.companyName.toLowerCase());
+      const existing = findCompanyByCanonical(companies, { name: jobData.companyName, website: jobData.website });
       if (existing) {
         companyId = existing.id;
       } else {
@@ -1785,7 +1849,7 @@ export default function App() {
     let companyId = manualCompanyId;
     let createdNewCompany = false;
     if (!companyId && companyName) {
-      const existing = companies.find(c => c.name.toLowerCase() === companyName.toLowerCase());
+      const existing = findCompanyByCanonical(companies, { name: companyName });
       if (existing) {
         companyId = existing.id;
       } else {
