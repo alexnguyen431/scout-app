@@ -351,7 +351,7 @@ async function handleJobProxy(ats, company, jobId) {
 // ---------------------------------------------------------------------------
 const MAX_BODY = 2 * 1024 * 1024;
 
-async function handleScrape(targetUrl) {
+async function handleScrape(targetUrl, source = null) {
   const parsed = new URL(targetUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Only http/https URLs are supported");
   const controller = new AbortController();
@@ -369,14 +369,18 @@ async function handleScrape(targetUrl) {
   const buf = await res.arrayBuffer();
   if (buf.byteLength > MAX_BODY) throw new Error("Page too large");
   const html = new TextDecoder("utf-8").decode(buf);
-  const result = extractFromHtml(html, targetUrl);
+  const result = extractFromHtml(html, targetUrl, source);
   if (!result.salary && result.content && result.content.length > 400) {
     try { const aiSalary = await extractSalaryViaAI(result.content); if (aiSalary) result.salary = aiSalary; } catch (_) {}
   }
   return result;
 }
 
-function extractFromHtml(html, sourceUrl) {
+function extractFromHtml(html, sourceUrl, sourceHint = null) {
+  let host = "";
+  try { host = new URL(sourceUrl).hostname.toLowerCase(); } catch (_) {}
+  const source = sourceHint || (host.includes("indeed") ? "indeed" : host.includes("naukri.com") ? "naukri" : null);
+
   const titleTag = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || null;
   function getMeta(name) {
     const re = new RegExp(`<meta[^>]+(?:name|property)=["']${name}["'][^>]+content=["']([^"']+)["']`, "i");
@@ -404,11 +408,31 @@ function extractFromHtml(html, sourceUrl) {
   if (mainMatch && stripHtml(mainMatch[1]).trim().length >= 200) mainBlock = mainMatch[1];
   if (!mainBlock) { const jm = bodyHtml.match(/<div[^>]*class="[^"]*job[-_\s]?description[^"]*"[^>]*>([\s\S]*?)<\/div>/i); if (jm && stripHtml(jm[1]).trim().length >= 200) mainBlock = jm[1]; }
   if (!mainBlock) { const am = bodyHtml.match(/<article[^>]*>([\s\S]*?)<\/article>/i); if (am && stripHtml(am[1]).trim().length >= 200) mainBlock = am[1]; }
+  if (!mainBlock && (source === "indeed" || source === "naukri")) {
+    const jobContent = bodyHtml.match(/<div[^>]*class="[^"]*jobsearch[-_]?(?:JobComponent|Body)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || bodyHtml.match(/<div[^>]*id="job-description-container"[^>]*>([\s\S]*?)<\/div>/i);
+    if (jobContent && stripHtml(jobContent[1]).trim().length >= 100) mainBlock = jobContent[1];
+  }
   if (mainBlock) bodyHtml = mainBlock;
   const content = stripHtml(bodyHtml);
-  const title = jsonLd?.title || ogTitle || titleTag;
+  let title = jsonLd?.title || ogTitle || titleTag;
   let companyName = jsonLd?.companyName || ogSiteName || extractCompanyFromUrl(sourceUrl);
-  try { const host = new URL(sourceUrl).hostname; if (host === "apply.workable.com" && metaSubdomain) companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase(); } catch (_) {}
+
+  if (source === "indeed" && (ogTitle || titleTag) && !jsonLd?.title) {
+    const raw = (ogTitle || titleTag || "").replace(/\s*\|\s*Indeed\s*.*$/i, "").trim();
+    const atMatch = raw.match(/^(.+?)\s+at\s+(.+?)$/);
+    const dashMatch = raw.match(/^(.+?)\s+[-–—]\s+(.+?)$/);
+    if (atMatch) { title = atMatch[1].trim(); if (!companyName) companyName = atMatch[2].trim(); }
+    else if (dashMatch) { title = dashMatch[1].trim(); if (!companyName) companyName = dashMatch[2].trim(); }
+    else if (raw) title = raw;
+  }
+  if (source === "naukri" && (ogTitle || titleTag) && !jsonLd?.title) {
+    const raw = (ogTitle || titleTag || "").replace(/\s*\|\s*Naukri\.com\s*.*$/i, "").trim();
+    const dashMatch = raw.match(/^(.+?)\s+[-–—]\s+(.+?)$/);
+    if (dashMatch) { title = dashMatch[1].trim(); if (!companyName) companyName = dashMatch[2].trim(); }
+    else if (raw) title = raw;
+  }
+
+  try { if (host === "apply.workable.com" && metaSubdomain) companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase(); } catch (_) {}
   let location = jsonLd?.location || extractLocationFromText(content) || null;
   let salary = jsonLd?.salary || extractSalaryFromText(content) || null;
   let finalContent = content.trim().length > 50 ? content : (jsonLd?.description || content);
@@ -607,7 +631,8 @@ export default async function handler(req, res) {
     if (pathStr === "/api/scrape" && req.method === "GET") {
       const targetUrl = url.searchParams.get("url");
       if (!targetUrl) return send(res, 400, { error: "Missing url parameter" });
-      const result = await handleScrape(targetUrl);
+      const source = url.searchParams.get("source") || null;
+      const result = await handleScrape(targetUrl, source);
       return send(res, 200, result);
     }
 

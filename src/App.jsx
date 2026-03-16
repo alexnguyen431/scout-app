@@ -2,7 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import confetti from "canvas-confetti";
 
 const SCOUT_KEY_STORAGE = "scout-key";
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "")
+  .replace(/\/+$/, "")
+  .replace(/\/api$/i, "");
 
 const SCOUT_KEY_REGEX = /^scout_[a-z0-9]{8}$/i;
 function isValidScoutKey(key) {
@@ -635,6 +637,21 @@ function detectATS(url) {
       const jIdx = parts.indexOf("j");
       if (jIdx >= 0 && parts[jIdx + 1]) {
         return { ats: "workable", company: parts[0], jobId: parts[jIdx + 1] };
+      }
+    }
+
+    // Indeed: indeed.com, indeed.co.uk, indeed.ca, etc. — viewjob?jk=... or /l/.../job/...
+    if (host === "indeed.com" || host.endsWith(".indeed.com")) {
+      const jk = params.get("jk") || path.match(/\/job\/([a-f0-9]+)/i)?.[1];
+      if (path.includes("viewjob") || path.includes("/job/") || jk) {
+        return { ats: "indeed", jobId: jk || null };
+      }
+    }
+
+    // Naukri: naukri.com, joblist.naukri.com — job detail or listing pages
+    if (host === "naukri.com" || host === "www.naukri.com" || host === "joblist.naukri.com") {
+      if (path.includes("/job-listings") || path.includes("/viewjob") || path.includes("/job-details") || path.match(/^\/[a-z0-9-]+-jobs-in-/i)) {
+        return { ats: "naukri" };
       }
     }
 
@@ -1640,7 +1657,9 @@ export default function App() {
 
       if (!rawText) {
         try {
-          const res = await fetch((API_BASE || "") + `/api/scrape?url=${encodeURIComponent(jobLink)}`);
+          const scrapeParams = new URLSearchParams({ url: jobLink });
+          if (ats && (ats.ats === "indeed" || ats.ats === "naukri")) scrapeParams.set("source", ats.ats);
+          const res = await fetch((API_BASE || "") + `/api/scrape?${scrapeParams.toString()}`);
           const data = await res.json();
           if (res.ok && data.content) {
             rawText = data.content;

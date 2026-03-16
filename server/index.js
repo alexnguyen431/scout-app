@@ -371,7 +371,7 @@ async function handleJobProxy(ats, company, jobId) {
 const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const MAX_BODY = 2 * 1024 * 1024; // 2 MB
 
-async function handleScrape(targetUrl) {
+async function handleScrape(targetUrl, source = null) {
   const parsed = new URL(targetUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
     throw new Error("Only http/https URLs are supported");
@@ -406,7 +406,7 @@ async function handleScrape(targetUrl) {
   if (buf.byteLength > MAX_BODY) throw new Error("Page too large");
   const html = new TextDecoder("utf-8").decode(buf);
 
-  const result = extractFromHtml(html, targetUrl);
+  const result = extractFromHtml(html, targetUrl, source);
   // AI fallback for salary when pattern matching found nothing
   if (!result.salary && result.content && result.content.length > 400) {
     try {
@@ -417,7 +417,13 @@ async function handleScrape(targetUrl) {
   return result;
 }
 
-function extractFromHtml(html, sourceUrl) {
+function extractFromHtml(html, sourceUrl, sourceHint = null) {
+  let host = "";
+  try {
+    host = new URL(sourceUrl).hostname.toLowerCase();
+  } catch (_) {}
+  const source = sourceHint || (host.includes("indeed") ? "indeed" : host.includes("naukri.com") ? "naukri" : null);
+
   // Extract <title>
   const titleTag = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || null;
 
@@ -473,14 +479,39 @@ function extractFromHtml(html, sourceUrl) {
     const articleMatch = bodyHtml.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
     if (articleMatch && stripHtml(articleMatch[1]).trim().length >= 200) mainBlock = articleMatch[1];
   }
+  if (!mainBlock && (source === "indeed" || source === "naukri")) {
+    const jobContent = bodyHtml.match(/<div[^>]*class="[^"]*jobsearch[-_]?(?:JobComponent|Body)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || bodyHtml.match(/<div[^>]*id="job-description-container"[^>]*>([\s\S]*?)<\/div>/i);
+    if (jobContent && stripHtml(jobContent[1]).trim().length >= 100) mainBlock = jobContent[1];
+  }
   if (mainBlock) bodyHtml = mainBlock;
   const content = stripHtml(bodyHtml);
 
-  // Build result: prefer JSON-LD > OG > title tag
-  const title = jsonLd?.title || ogTitle || titleTag;
+  // Build result: prefer JSON-LD > OG > title tag; for Indeed/Naukri parse title/company from og:title
+  let title = jsonLd?.title || ogTitle || titleTag;
   let companyName = jsonLd?.companyName || ogSiteName || extractCompanyFromUrl(sourceUrl);
+
+  if (source === "indeed" && (ogTitle || titleTag) && !jsonLd?.title) {
+    const raw = (ogTitle || titleTag || "").replace(/\s*\|\s*Indeed\s*.*$/i, "").trim();
+    const atMatch = raw.match(/^(.+?)\s+at\s+(.+?)$/);
+    const dashMatch = raw.match(/^(.+?)\s+[-–—]\s+(.+?)$/);
+    if (atMatch) {
+      title = atMatch[1].trim();
+      if (!companyName) companyName = atMatch[2].trim();
+    } else if (dashMatch) {
+      title = dashMatch[1].trim();
+      if (!companyName) companyName = dashMatch[2].trim();
+    } else if (raw) title = raw;
+  }
+  if (source === "naukri" && (ogTitle || titleTag) && !jsonLd?.title) {
+    const raw = (ogTitle || titleTag || "").replace(/\s*\|\s*Naukri\.com\s*.*$/i, "").trim();
+    const dashMatch = raw.match(/^(.+?)\s+[-–—]\s+(.+?)$/);
+    if (dashMatch) {
+      title = dashMatch[1].trim();
+      if (!companyName) companyName = dashMatch[2].trim();
+    } else if (raw) title = raw;
+  }
+
   try {
-    const host = new URL(sourceUrl).hostname;
     if (host === "apply.workable.com" && metaSubdomain) {
       companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase();
     }
@@ -964,7 +995,8 @@ const server = http.createServer(async (req, res) => {
         send(res, 400, { error: "Missing url parameter" });
         return;
       }
-      const result = await handleScrape(targetUrl);
+      const source = url.searchParams.get("source") || null;
+      const result = await handleScrape(targetUrl, source);
       send(res, 200, result);
       return;
     }
