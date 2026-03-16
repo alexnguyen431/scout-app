@@ -1218,32 +1218,35 @@ export default function App() {
     };
   }, [resizingColumn]);
 
-  // Mouse-based drag with dead-zone: only start drag after 5px of movement so clicks still open jobs
+  // Mouse & touch drag with dead-zone: only start drag after 5px of movement so taps still open jobs
   useEffect(() => {
     const DRAG_THRESHOLD = 5;
 
-    const onMouseMove = (e) => {
+    const beginDragIfNeeded = (point) => {
       const p = pendingDragRef.current;
       if (p && !dragJobId) {
-        const dx = e.clientX - p.startX;
-        const dy = e.clientY - p.startY;
+        const dx = point.x - p.startX;
+        const dy = point.y - p.startY;
         if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) {
           setDragJobId(p.jobId);
           setDragStartRect(p.rect);
           setDragGrabOffset(p.grabOffset);
           setDragStartMouse({ x: p.startX, y: p.startY });
-          setDragMouse({ x: e.clientX, y: e.clientY });
+          setDragMouse({ x: point.x, y: point.y });
         }
-        return;
+        return true;
       }
-      if (dragJobId) {
-        setDragMouse({ x: e.clientX, y: e.clientY });
-        const col = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-kanban-status]");
-        setDragOverCol(col ? col.dataset.kanbanStatus : null);
-      }
+      return false;
     };
 
-    const onMouseUp = (e) => {
+    const updateDragPosition = (point) => {
+      if (!dragJobId) return;
+      setDragMouse({ x: point.x, y: point.y });
+      const col = document.elementFromPoint(point.x, point.y)?.closest("[data-kanban-status]");
+      setDragOverCol(col ? col.dataset.kanbanStatus : null);
+    };
+
+    const finishDrag = (point) => {
       if (pendingDragRef.current && !dragJobId) {
         const p = pendingDragRef.current;
         pendingDragRef.current = null;
@@ -1252,7 +1255,7 @@ export default function App() {
         return;
       }
       if (dragJobId) {
-        const col = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-kanban-status]");
+        const col = document.elementFromPoint(point.x, point.y)?.closest("[data-kanban-status]");
         if (col) moveJob(dragJobId, col.dataset.kanbanStatus);
         setDragJobId(null);
         setDragOverCol(null);
@@ -1264,13 +1267,45 @@ export default function App() {
       pendingDragRef.current = null;
     };
 
+    const onMouseMove = (e) => {
+      const point = { x: e.clientX, y: e.clientY };
+      if (beginDragIfNeeded(point)) return;
+      updateDragPosition(point);
+    };
+
+    const onMouseUp = (e) => {
+      const point = { x: e.clientX, y: e.clientY };
+      finishDrag(point);
+    };
+
+    const onTouchMove = (e) => {
+      const t = e.touches[0];
+      if (!t) return;
+      const point = { x: t.clientX, y: t.clientY };
+      if (beginDragIfNeeded(point)) return;
+      updateDragPosition(point);
+    };
+
+    const onTouchEnd = (e) => {
+      const t = e.changedTouches[0];
+      // Fallback to last drag position if we don't have a touch point
+      const point = t ? { x: t.clientX, y: t.clientY } : (dragMouse || { x: 0, y: 0 });
+      finishDrag(point);
+    };
+
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("touchmove", onTouchMove);
+    document.addEventListener("touchend", onTouchEnd);
+    document.addEventListener("touchcancel", onTouchEnd);
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [dragJobId, jobs]);
+  }, [dragJobId, jobs, dragMouse]);
 
   // During active drag, set grabbing cursor and disable text selection
   useEffect(() => {
@@ -2234,6 +2269,18 @@ export default function App() {
                             startY: e.clientY,
                             rect: { width: rect.width, height: rect.height },
                             grabOffset: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                          };
+                        }}
+                        onTouchStart={e => {
+                          const t = e.touches[0];
+                          if (!t) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          pendingDragRef.current = {
+                            jobId: job.id,
+                            startX: t.clientX,
+                            startY: t.clientY,
+                            rect: { width: rect.width, height: rect.height },
+                            grabOffset: { x: t.clientX - rect.left, y: t.clientY - rect.top },
                           };
                         }}
                         style={{
