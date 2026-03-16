@@ -1100,6 +1100,14 @@ export default function App() {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyModalMessage, setKeyModalMessage] = useState(null);
   const [keyMenuOpen, setKeyMenuOpen] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 640px)");
+    const fn = () => setIsMobile(mql.matches);
+    mql.addEventListener("change", fn);
+    return () => mql.removeEventListener("change", fn);
+  }, []);
   const [toast, setToast] = useState(null);
   const pendingImportAfterKeyRef = useRef(null);
   const [workspaceEmail, setWorkspaceEmail] = useState(null);
@@ -1909,79 +1917,150 @@ export default function App() {
       {/* Main */}
       <div style={css.main}>
         <div className="scout-header" style={css.header}>
-          <div className="scout-header-left" style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
-              <div style={{ ...css.headerTitle, color: T.textMuted }}>{view === "board" ? "Board" : "Companies"}</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: T.textSec, fontWeight: 500 }}>
-              <span><span style={{ color: T.textMuted, marginRight: 4 }}>Tracked</span><strong style={{ color: T.text }}>{jobs.length}</strong></span>
-              <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
-            </div>
-          </div>
-          <div className="scout-header-right" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 0 }}>
-            <button style={css.btn("primary")} onClick={() => setModal("addJob")}>+ Add Job</button>
-            <div style={{ position: "relative" }}>
-              {key ? (
-                <>
-              <button
-                type="button"
-                onClick={() => setKeyMenuOpen((o) => !o)}
-                style={{ ...css.btn("sec"), display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
-                <span style={{ color: T.text }}>{truncatedKey}</span>
-                <ChevronIcon size={10} />
+          {isMobile ? (
+            <>
+              <button type="button" onClick={() => setHeaderMenuOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 10, border: "none", background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", color: T.text, cursor: "pointer" }} aria-label="Menu">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
               </button>
-              {keyMenuOpen && (
+              <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
+              <div style={{ flex: 1, minWidth: 0 }} />
+              <button style={{ ...css.btn("primary"), flexShrink: 0 }} onClick={() => { setModal("addJob"); setHeaderMenuOpen(false); }}>+ Add Job</button>
+              {headerMenuOpen && (
                 <>
-                  <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setKeyMenuOpen(false)} aria-hidden="true" />
-                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, width: "max-content", maxWidth: "min(420px, 90vw)", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, zIndex: 100, padding: "14px 14px 12px", boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.25)" : "0 8px 24px rgba(0,0,0,0.08)" }}>
-                    <div style={{ padding: "0 0 10px" }}>
-                      <div style={css.label}>Access key</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
-                        <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setKeyMenuOpen(false); }}>Copy</button>
-                      </div>
-                      <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
+                  <div style={{ position: "fixed", inset: 0, zIndex: 99, background: "rgba(0,0,0,0.4)" }} onClick={() => setHeaderMenuOpen(false)} aria-hidden="true" />
+                  <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(300px, 85vw)", maxWidth: "100%", background: T.surface, borderLeft: `1px solid ${T.border}`, zIndex: 100, overflow: "auto", padding: "20px 16px", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                      <span style={{ ...css.headerTitle, color: T.text }}>Menu</span>
+                      <button type="button" onClick={() => setHeaderMenuOpen(false)} style={{ background: "none", border: "none", fontSize: 22, color: T.textMuted, cursor: "pointer", padding: 4 }} aria-label="Close">×</button>
                     </div>
-                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 12 }} />
-                    <div style={{ paddingTop: 12 }}>
-                      <div style={css.label}>Recovery email</div>
-                      {workspaceEmail && !recoveryEmailEditing ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{workspaceEmail}</span>
-                          <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
-                          <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
-                        </div>
-                      ) : (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 4 }}>{view === "board" ? "Board" : "Companies"}</div>
+                      <div style={{ display: "flex", gap: 16, fontSize: 14, fontWeight: 500 }}>
+                        <span><span style={{ color: T.textMuted, marginRight: 4 }}>Tracked</span><strong style={{ color: T.text }}>{jobs.length}</strong></span>
+                        <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
+                      </div>
+                    </div>
+                    <button style={{ ...css.btn("primary"), width: "100%", marginBottom: 20 }} onClick={() => { setModal("addJob"); setHeaderMenuOpen(false); }}>+ Add Job</button>
+                    <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 16 }}>
+                      <div style={css.label}>Account</div>
+                      {key ? (
                         <>
-                          <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                            <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 12 }} />
-                            <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={css.label}>Access key</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
+                              <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setHeaderMenuOpen(false); }}>Copy</button>
+                            </div>
+                            <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
                           </div>
-                          <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={css.label}>Recovery email</div>
+                            {workspaceEmail && !recoveryEmailEditing ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, wordBreak: "break-all" }}>{workspaceEmail}</span>
+                                <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
+                                <button type="button" onClick={() => { removeRecoveryEmail(); setHeaderMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 6 }}>
+                                  <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, padding: "8px 10px", fontSize: 12 }} />
+                                  <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
+                                </div>
+                                <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
+                              </>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => { handleLogout(); setHeaderMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
                         </>
+                      ) : (
+                        <button type="button" style={{ ...css.btn("sec"), width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => { setKeyModalMessage(null); setShowKeyModal(true); setHeaderMenuOpen(false); }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                          Sign up / Log in
+                        </button>
                       )}
                     </div>
-                    <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 12, paddingTop: 8 }} />
-                    <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 4 }}>Log out of this device</button>
                   </div>
                 </>
               )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setKeyModalMessage(null); setShowKeyModal(true); }}
-                  style={{ ...css.btn("sec"), display: "flex", alignItems: "center", gap: 6 }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
-                  Sign up / Log in
-                </button>
-              )}
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="scout-header-left" style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
+                  <div style={{ ...css.headerTitle, color: T.textMuted }}>{view === "board" ? "Board" : "Companies"}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: T.textSec, fontWeight: 500 }}>
+                  <span><span style={{ color: T.textMuted, marginRight: 4 }}>Tracked</span><strong style={{ color: T.text }}>{jobs.length}</strong></span>
+                  <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
+                </div>
+              </div>
+              <div className="scout-header-right" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 0 }}>
+                <button style={css.btn("primary")} onClick={() => setModal("addJob")}>+ Add Job</button>
+                <div style={{ position: "relative" }}>
+                  {key ? (
+                    <>
+                  <button
+                    type="button"
+                    onClick={() => setKeyMenuOpen((o) => !o)}
+                    style={{ ...css.btn("sec"), display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                    <span style={{ color: T.text }}>{truncatedKey}</span>
+                    <ChevronIcon size={10} />
+                  </button>
+                  {keyMenuOpen && (
+                    <>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setKeyMenuOpen(false)} aria-hidden="true" />
+                      <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, width: "max-content", maxWidth: "min(420px, 90vw)", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, zIndex: 100, padding: "14px 14px 12px", boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.25)" : "0 8px 24px rgba(0,0,0,0.08)" }}>
+                        <div style={{ padding: "0 0 10px" }}>
+                          <div style={css.label}>Access key</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
+                            <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setKeyMenuOpen(false); }}>Copy</button>
+                          </div>
+                          <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
+                        </div>
+                        <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 12 }} />
+                        <div style={{ paddingTop: 12 }}>
+                          <div style={css.label}>Recovery email</div>
+                          {workspaceEmail && !recoveryEmailEditing ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{workspaceEmail}</span>
+                              <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
+                              <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                                <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 12 }} />
+                                <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
+                              </div>
+                              <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
+                            </>
+                          )}
+                        </div>
+                        <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 12, paddingTop: 8 }} />
+                        <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 4 }}>Log out of this device</button>
+                      </div>
+                    </>
+                  )}
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setKeyModalMessage(null); setShowKeyModal(true); }}
+                      style={{ ...css.btn("sec"), display: "flex", alignItems: "center", gap: 6 }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                      Sign up / Log in
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -1989,8 +2068,9 @@ export default function App() {
         {/* Board */}
         {view === "board" && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", paddingBottom: 72 }}>
-            <div className="scout-board-toolbar" style={{ display: "flex", alignItems: "center", gap: 18, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", gap: 2, background: isDark ? T.surface : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2 }}>
+            <div className="scout-board-toolbar" style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, overflowX: isMobile ? "auto" : "visible", overflowY: "hidden", ...(isMobile && { WebkitOverflowScrolling: "touch" }) }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: isMobile ? "nowrap" : "wrap", minWidth: isMobile ? "min-content" : undefined }}>
+              <div style={{ display: "flex", gap: 2, background: isDark ? T.surface : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2, flexShrink: 0 }}>
                 {[
                   ["kanban", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
                   ["table", <svg key="table" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18M3 15h18" /></svg>],
@@ -2008,7 +2088,7 @@ export default function App() {
                 placeholder="Search company or job title..."
                 value={boardSearch}
                 onChange={(e) => setBoardSearch(e.target.value)}
-                style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box" }}
+                style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
               />
               {(() => {
                 const selectBaseStyle = {
@@ -2027,7 +2107,7 @@ export default function App() {
                 const selectWrapperStyle = { position: "relative", display: "inline-block" };
                 const chevronOverlayStyle = { position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" };
                 return (
-              <>
+              <div style={{ display: "flex", alignItems: "center", gap: 18, flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Priority</span>
                 <div style={selectWrapperStyle}>
@@ -2051,9 +2131,10 @@ export default function App() {
                   <span style={chevronOverlayStyle}><ChevronIcon down size={10} color={T.textSec} /></span>
                 </div>
               </div>
-              </>
+              </div>
                 );
               })()}
+            </div>
             </div>
 
             {/* Kanban: sticky header row (sits below Board row when stuck); scroll area has only columns */}
