@@ -1105,6 +1105,7 @@ export default function App() {
   const [workspaceEmail, setWorkspaceEmail] = useState(null);
   const [recoveryEmailInput, setRecoveryEmailInput] = useState("");
   const [recoveryEmailSaving, setRecoveryEmailSaving] = useState(false);
+  const [recoveryEmailEditing, setRecoveryEmailEditing] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [dragJobId, setDragJobId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -1394,6 +1395,8 @@ export default function App() {
       if (res.ok) {
         setWorkspaceEmail(email);
         setRecoveryEmailInput("");
+        setRecoveryEmailEditing(false);
+        setToast("Recovery email saved.");
       }
     } catch (_) {}
     setRecoveryEmailSaving(false);
@@ -1402,7 +1405,11 @@ export default function App() {
   const removeRecoveryEmail = async () => {
     try {
       const res = await fetch((API_BASE || "") + "/api/workspace/email", { method: "DELETE", headers: getScoutHeaders() });
-      if (res.ok) setWorkspaceEmail(null);
+      if (res.ok) {
+        setWorkspaceEmail(null);
+        setRecoveryEmailEditing(false);
+        setRecoveryEmailInput("");
+      }
     } catch (_) {}
   };
 
@@ -1905,7 +1912,7 @@ export default function App() {
               {keyMenuOpen && (
                 <>
                   <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setKeyMenuOpen(false)} aria-hidden="true" />
-                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, zIndex: 100, padding: "14px 14px 12px", boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.25)" : "0 8px 24px rgba(0,0,0,0.08)" }}>
+                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, minWidth: 280, width: "max-content", maxWidth: "min(420px, 90vw)", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, zIndex: 100, padding: "14px 14px 12px", boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.25)" : "0 8px 24px rgba(0,0,0,0.08)" }}>
                     <div style={{ padding: "0 0 10px" }}>
                       <div style={css.label}>Access key</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -1917,10 +1924,11 @@ export default function App() {
                     <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 12 }} />
                     <div style={{ paddingTop: 12 }}>
                       <div style={css.label}>Recovery email</div>
-                      {workspaceEmail ? (
-                        <div style={{ fontSize: 12, color: T.textSec, marginBottom: 4 }}>
-                          {workspaceEmail}
-                          <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ marginLeft: 8, background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11 }}>Remove</button>
+                      {workspaceEmail && !recoveryEmailEditing ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{workspaceEmail}</span>
+                          <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
+                          <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
                         </div>
                       ) : (
                         <>
