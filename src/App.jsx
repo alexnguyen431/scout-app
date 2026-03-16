@@ -844,7 +844,7 @@ function getCss(T, isDark) {
     },
     navBtn: (on) => ({ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: on ? 600 : 400, color: on ? T.text : T.textSec, background: on ? (isDark ? T.surface : T.surfaceHover) : "transparent", border: "none", width: "100%", textAlign: "left", transition: "all 0.15s", letterSpacing: "-0.01em", fontFamily: FONT_TEXT }),
     main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-    header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: `1px solid ${T.border}`, minHeight: 58 },
+    header: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "16px 20px", borderBottom: `1px solid ${T.border}`, minHeight: 58 },
     headerTitle: { fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: T.text, letterSpacing: "-0.02em" },
     btn: (v = "primary") => ({
       display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: "pointer", border: "none", transition: "all 0.15s", letterSpacing: "-0.01em", fontFamily: FONT_TEXT,
@@ -1881,12 +1881,27 @@ export default function App() {
         .job-summary-html p:last-child{margin-bottom:0}
         .job-summary-html strong{font-weight:600}
         [data-dragging="true"],[data-dragging="true"] *{cursor:grabbing !important}
+        @media (max-width: 640px) {
+          .scout-header { padding: 12px 16px; gap: 10px; }
+          .scout-header-left { gap: 12px; }
+          .scout-header-right { width: 100%; justify-content: flex-end; }
+          .scout-board-toolbar { padding: 12px 16px; gap: 12px; }
+          .scout-modal { padding: 20px 16px; max-height: 90vh; }
+          .scout-job-modal { max-height: 100vh; border-radius: 0; }
+          .scout-job-modal .scout-job-modal-header-inner { padding: 16px 16px 24px; }
+          .scout-job-modal-header-row { flex-wrap: wrap; gap: 12px; }
+          .scout-job-modal-header-row .scout-job-modal-company { min-width: 0; flex: 1 1 100%; }
+          .scout-job-modal-header-row .scout-job-modal-actions { flex: 1 1 100%; min-height: 44px; align-items: center; justify-content: flex-end; }
+          .scout-job-modal-content { padding-left: 16px !important; padding-right: 16px !important; }
+          .scout-job-notes-add { flex-direction: column; align-items: stretch !important; }
+          .scout-job-notes-add textarea { min-height: 80px; }
+        }
       `}</style>
 
       {/* Main */}
       <div style={css.main}>
-        <div style={css.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div className="scout-header" style={css.header}>
+          <div className="scout-header-left" style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
               <div style={{ ...css.headerTitle, color: T.textMuted }}>{view === "board" ? "Board" : "Companies"}</div>
@@ -1896,7 +1911,7 @@ export default function App() {
               <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div className="scout-header-right" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 0 }}>
             <button style={css.btn("primary")} onClick={() => setModal("addJob")}>+ Add Job</button>
             <div style={{ position: "relative" }}>
               {key ? (
@@ -1964,7 +1979,7 @@ export default function App() {
         {/* Board */}
         {view === "board" && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", paddingBottom: 72 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
+            <div className="scout-board-toolbar" style={{ display: "flex", alignItems: "center", gap: 18, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 2, background: isDark ? T.surface : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2 }}>
                 {[
                   ["kanban", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
@@ -2857,18 +2872,18 @@ export default function App() {
         const closeJobModal = () => { setEditing(null); setModal(null); setJobDetailMenuOpen(false); };
         return (
         <div className="scout-overlay" style={css.overlay} onClick={e => { if (e.target === e.currentTarget) closeJobModal(); }}>
-          <div className="scout-modal" style={{ ...css.modal, maxWidth: 600, overflow: "visible", padding: 0, borderTop: `4px solid ${detailCoColor}`, borderLeft: "none", borderRight: "none" }}>
+          <div className="scout-modal scout-job-modal" style={{ ...css.modal, maxWidth: 600, overflow: "visible", padding: 0, borderTop: `4px solid ${detailCoColor}`, borderLeft: "none", borderRight: "none" }}>
             {/* Brand-color header: company, title, location, salary, actions — ends before description */}
             {(() => {
               const headerFg = textOnColor(detailCoColor);
               const headerFgMuted = headerFg === "#ffffff" ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.7)";
               const btnOnBrand = { background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: headerFg, textDecoration: "none", fontSize: 11.5, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontFamily: FONT_TEXT };
               return (
-            <div style={{ background: detailCoColor, color: headerFg, padding: "20px 28px 32px", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+            <div className="scout-job-modal-header-inner" style={{ background: detailCoColor, color: headerFg, padding: "20px 28px 32px", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
             {/* Row 1: Company name + View Job, menu, close */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, paddingBottom: 24 }}>
+            <div className="scout-job-modal-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, paddingBottom: 24 }}>
               {detailCo && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <div className="scout-job-modal-company" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, overflow: "hidden" }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: headerFg, flexShrink: 0, boxShadow: "none" }}>
                     {initials(detailCo.name)}
                   </div>
@@ -2879,18 +2894,18 @@ export default function App() {
                     onStartEdit={() => startEdit("company", activeJob.companyId, "name", detailCo.name)}
                     onEditingChange={setEditingValue}
                     onSave={saveEdit}
-                    displayStyle={{ fontSize: 15, color: headerFg, fontWeight: 600, letterSpacing: "-0.01em" }}
+                    displayStyle={{ fontSize: 15, color: headerFg, fontWeight: 600, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}
                     inputStyle={{ ...css.input, background: T.surface, color: T.text }}
                   />
                 </div>
               )}
-              <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="scout-job-modal-actions" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12, color: headerFgMuted, letterSpacing: "-0.01em", paddingRight: 4 }}>Added {timeAgo(activeJob.addedAt)}</span>
                 {activeJob.link && (
                   <a href={activeJob.link} target="_blank" rel="noopener noreferrer" style={btnOnBrand}>↗ View Job</a>
                 )}
                 <div style={{ position: "relative" }}>
-                  <button type="button" onClick={() => setJobDetailMenuOpen(o => !o)} style={{ ...btnOnBrand, padding: "8px 10px", fontSize: 16, lineHeight: 1 }} title="More actions">⋮</button>
+                  <button type="button" onClick={() => setJobDetailMenuOpen(o => !o)} style={{ ...btnOnBrand, padding: "8px 10px", fontSize: 16, lineHeight: 1, minWidth: 36, minHeight: 36 }} title="More actions">⋮</button>
                   {jobDetailMenuOpen && (
                     <>
                       <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setJobDetailMenuOpen(false)} aria-hidden="true" />
@@ -2900,7 +2915,7 @@ export default function App() {
                     </>
                   )}
                 </div>
-                <button type="button" onClick={closeJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: headerFg, opacity: 0.9 }} aria-label="Close">×</button>
+                <button type="button" onClick={closeJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, fontSize: 22, lineHeight: 1, color: headerFg, opacity: 0.9, minWidth: 44, minHeight: 44 }} aria-label="Close">×</button>
               </div>
             </div>
             {/* Row 2: Job title */}
@@ -2947,7 +2962,7 @@ export default function App() {
               );
             })()}
 
-            <div style={{ padding: "0 28px 0", position: "relative" }}>
+            <div className="scout-job-modal-content" style={{ padding: "0 28px 0", position: "relative" }}>
             <div style={{ marginTop: 24, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.border}` }}>
               {editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "summary" ? (
                 <textarea
@@ -3052,7 +3067,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <textarea
                     style={{ ...css.textarea, minHeight: 56, resize: "vertical", flex: 1 }}
                     value={newNoteInput}
