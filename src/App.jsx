@@ -34,6 +34,25 @@ function getStoredKey() {
   } catch { return null; }
 }
 
+function Spinner({ size = 14, color = "currentColor", style = {} }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        border: `2px solid ${color}`,
+        borderTopColor: "transparent",
+        borderRadius: "50%",
+        animation: "scout-spin 0.8s linear infinite",
+        flexShrink: 0,
+        ...style,
+      }}
+      aria-hidden
+    />
+  );
+}
+
 function EditableField({
   isEditing,
   value,
@@ -47,6 +66,7 @@ function EditableField({
   inputStyle,
   emptyLabel,
   inputType,
+  displaySuffix,
 }) {
   const inputRef = useRef(null);
   useEffect(() => {
@@ -55,7 +75,8 @@ function EditableField({
       if (multiline) inputRef.current?.select?.();
     }
   }, [isEditing, multiline]);
-  const display = value?.trim() || emptyLabel || placeholder || "—";
+  const raw = value?.trim();
+  const display = raw ? (raw + (displaySuffix || "")) : (emptyLabel || placeholder || "—");
   if (isEditing) {
     const common = {
       ...inputStyle,
@@ -211,7 +232,7 @@ const SEED_JOBS = [
 ];
 
 async function callClaude(userMsg, systemMsg, useWebSearch = false) {
-  const res = await fetch("/api/claude", {
+  const res = await fetch((API_BASE || "") + "/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userMsg, systemMsg, useWebSearch }),
@@ -223,19 +244,19 @@ async function callClaude(userMsg, systemMsg, useWebSearch = false) {
   return data.text ?? "";
 }
 
-const AI_CLEANUP_SYSTEM = `You are a job posting data extractor. You will receive partially-extracted job data and the raw scraped text. Your job is to fill in ONLY the missing (null) fields. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
-{"title":"job title or null if not found","companyName":"company name or null","location":"location or null","salary":"salary/compensation range as a short string, or null if truly not mentioned","requirements":["requirement 1","requirement 2"],"summary":"1-2 sentence summary of the role"}
+const AI_CLEANUP_SYSTEM = `You are a job posting data extractor. You will receive partially-extracted job data and the raw scraped text. Fill in missing fields and fix weak ones. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
+{"title":"job title or null if not found","companyName":"company name or null","location":"location or null","salary":"salary/compensation range as a short string, or null if truly not mentioned","requirements":["requirement 1","requirement 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do NOT describe the company or use intros like 'We are...'. Plain text."}
 Rules:
 - If a field already has a good value, return that same value unchanged.
-- For salary: look carefully for compensation, pay range, base salary, OTE, or equity mentions. Format concisely (e.g. "$120k – $180k").
+- For salary: look for compensation, pay range, base salary, OTE, or equity. Format concisely (e.g. "$120k – $180k").
 - For requirements: return 3-8 concise bullet points. If already good, keep them.
-- For summary: 1-2 sentences max. If already good, keep it.
+- For summary: ALWAYS write a 2-3 sentence role summary from the job text. Describe what the person will do in this role, not the company. If the provided summary is generic or company-focused, replace it. Never leave summary empty when the job text describes the role.
 - NEVER fabricate data. If info is truly not in the text, return null.`;
 
 /** Set to true to skip AI API calls for company research (companies page + auto-research on new company). */
-const PAUSE_COMPANY_AI = true;
+const PAUSE_COMPANY_AI = false;
 
-async function researchCompanyByName(companyName) {
+async function researchCompanyByName(companyName, options = {}) {
   const empty = {
     name: companyName || "",
     description: "",
@@ -247,27 +268,25 @@ async function researchCompanyByName(companyName) {
     website: "",
   };
   if (PAUSE_COMPANY_AI) return empty;
-  try {
-    const headers = getScoutHeaders();
-    const res = await fetch(
-      (API_BASE || "") + "/api/company-research?companyName=" + encodeURIComponent(companyName || ""),
-      { headers }
-    );
-    const data = await res.json();
-    if (!res.ok) return empty;
-    return {
-      name: data.name ?? companyName ?? "",
-      description: data.description ?? "",
-      size: data.size ?? "",
-      stage: data.stage ?? "",
-      designTeamSize: data.designTeamSize ?? "",
-      designLeaders: data.designLeaders ?? "",
-      culture: data.culture ?? "",
-      website: data.website ?? "",
-    };
-  } catch (_) {
-    return empty;
-  }
+  const params = new URLSearchParams({ companyName: companyName || "" });
+  if (options.refresh) params.set("refresh", "1");
+  const headers = getScoutHeaders();
+  const res = await fetch(
+    (API_BASE || "") + "/api/company-research?" + params.toString(),
+    { headers }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || res.statusText || "Request failed");
+  return {
+    name: data.name ?? companyName ?? "",
+    description: data.description ?? "",
+    size: data.size ?? "",
+    stage: data.stage ?? "",
+    designTeamSize: data.designTeamSize ?? "",
+    designLeaders: data.designLeaders ?? "",
+    culture: data.culture ?? "",
+    website: data.website ?? "",
+  };
 }
 
 /** Free, no-API extraction from job description text (regex/heuristics). */
@@ -304,17 +323,41 @@ function extractJobFree(rawText, prefill = {}, jsonLd = null) {
     if (atCoMatch) companyName = atCoMatch[1].trim();
   }
 
-  // --- Location ---
+  // --- Location (including multi-location: "City, State | City, State") ---
+  function normalizeMultiLocation(raw) {
+    if (!raw || typeof raw !== "string") return null;
+    const parts = raw
+      .split(/\s*\|\s*|\s*;\s*|\s+and\s+/i)
+      .map((p) => p.trim().replace(/\s+/g, " "))
+      .filter((p) => p.length > 2 && p.length < 120);
+    return parts.length > 0 ? parts.join(" / ") : null;
+  }
   let location = prefill.location?.trim() || jsonLd?.location || null;
   if (!location) {
-    const locPatterns = [
-      /(?:^|\n)\s*(?:location|office)\s*:\s*([A-Z][A-Za-z, /]+)/im,
-      /(?:based|located|headquarters?) in\s+([A-Z][A-Za-z, /]+)/,
-      /(?:^|\n)\s*([A-Z][a-z]+(?:,\s*[A-Z]{2}))\s*(?:\n|$)/m,
-    ];
-    for (const pat of locPatterns) {
-      const m = text.match(pat);
-      if (m) { location = m[1].trim().replace(/\s*[,/]\s*$/, ""); break; }
+    // Full line after "location:" or "locations:" (may contain | or ; separated list)
+    const locLineMatch = text.match(/(?:^|\n)\s*(?:location|locations|office)\s*:?\s*([^\n]+)/im);
+    if (locLineMatch) {
+      const normalized = normalizeMultiLocation(locLineMatch[1]);
+      if (normalized) location = normalized;
+      else if (locLineMatch[1].trim().length > 2 && locLineMatch[1].trim().length < 150) location = locLineMatch[1].trim();
+    }
+    if (!location) {
+      const locPatterns = [
+        /(?:based|located|headquarters?) in\s+([A-Z][A-Za-z, /]+)/,
+        /(?:^|\n)\s*([A-Z][a-z]+(?:,\s*[A-Z]{2}))\s*(?:\n|$)/m,
+      ];
+      for (const pat of locPatterns) {
+        const m = text.match(pat);
+        if (m) { location = m[1].trim().replace(/\s*[,/]\s*$/, ""); break; }
+      }
+    }
+    // Standalone "City, State | City, State | ..." pattern
+    if (!location) {
+      const pipeLine = text.match(/[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+)\s*\|\s*[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+)(?:\s*\|\s*[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+))*/);
+      if (pipeLine) {
+        const normalized = normalizeMultiLocation(pipeLine[0]);
+        if (normalized) location = normalized;
+      }
     }
     if (/\bremote\b/i.test(text) && !location) location = "Remote";
   }
@@ -323,8 +366,30 @@ function extractJobFree(rawText, prefill = {}, jsonLd = null) {
   // --- Salary ---
   let salary = prefill.salary || jsonLd?.salary || null;
   if (!salary) {
+    // Multi-zone / "base pay ranges" (e.g. Atlassian: Zone A: USD 182700 - USD 238525, ...)
+    const zoneRangeRe = /(?:USD|CAD|GBP|EUR)\s*([\d,]+)\s*(?:[-–—]+|to)\s*(?:(?:USD|CAD|GBP|EUR)\s*)?([\d,]+)/gi;
+    const zoneMatches = [...text.matchAll(zoneRangeRe)];
+    if (zoneMatches.length > 0) {
+      let minV = Infinity, maxV = -Infinity;
+      let cur = "USD";
+      for (const m of zoneMatches) {
+        const low = Number(m[1].replace(/,/g, ""));
+        const high = Number(m[2].replace(/,/g, ""));
+        if (!Number.isNaN(low) && !Number.isNaN(high)) {
+          if (low < minV) minV = low;
+          if (high > maxV) maxV = high;
+          if (/USD/i.test(m[0])) cur = "USD"; else if (/CAD/i.test(m[0])) cur = "CAD"; else if (/GBP/i.test(m[0])) cur = "GBP"; else if (/EUR/i.test(m[0])) cur = "EUR";
+        }
+      }
+      if (minV !== Infinity && maxV !== Infinity && minV <= maxV) {
+        const fmt = (n) => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        salary = `${cur} ${fmt(minV)} – ${cur} ${fmt(maxV)}`;
+      }
+    }
+    if (!salary) {
     const patterns = [
       /\b(?:salary|compensation|pay)\s*:?\s*\$[\d,]+\s*(?:[-–—]+|to)\s*\$[\d,]+/i,
+      /(?:USD|CAD|GBP|EUR)\s*[\d,]+\s*(?:[-–—]+|to)\s*(?:(?:USD|CAD|GBP|EUR)\s*)?[\d,]+/i,
       /CA\$\s*[\d,]+\s*(?:[-–—]+|to)\s*CA\$\s*[\d,]+/i,
       /(?:US|AU)\$\s*[\d,]+\s*(?:[-–—]+|to)\s*(?:US|AU)\$\s*[\d,]+/i,
       /\$[\d,]+(?:\s*\/\s*yr)?\s+to\s+\$[\d,]+(?:\s*\/\s*yr)?/i,
@@ -360,6 +425,7 @@ function extractJobFree(rawText, prefill = {}, jsonLd = null) {
       if (yrRanges && yrRanges.length > 0) {
         salary = [...new Set(yrRanges.map((r) => r.replace(/\s+/g, " ").trim()))].slice(0, 2).join("; ");
       }
+    }
     }
   }
 
@@ -447,12 +513,43 @@ function extractJobFree(rawText, prefill = {}, jsonLd = null) {
   // --- Responsibilities (bonus field) ---
   const responsibilities = findSectionItems(RESP_HEADERS, 10);
 
-  // --- Summary ---
+  // --- Summary: prefer "About the role" / responsibilities section; avoid company intro ---
   let summary = null;
-  // Prefer JSON-LD description first sentence, then OG description, then first paragraph
-  const descSource = jsonLd?.description || text;
-  const sentences = descSource.match(/[^.!?]{15,}[.!?]+/g);
-  if (sentences?.length) summary = sentences.slice(0, 2).join(" ").trim().slice(0, 300);
+  const ROLE_HEADERS = /^(?:about (?:the )?role|the role|in this role|what you(?:['']ll)? do|responsibilities|the opportunity|what we need)\s*:?\s*/i;
+  const COMPANY_INTRO = /^(?:we are|we're|at\s+[A-Za-z]+,?\s+we|join (?:our|us)|come (?:join|build)|company\s+[A-Za-z]+\s+is|our (?:mission|team|company)|[A-Za-z]+\s+is\s+(?:a|an)\s+)/i;
+  function takeRoleSummaryFromLines(linesArr, headerRegex, maxSentences = 3, maxLen = 420) {
+    const sectionStop = /^(?:about|benefits|compensation|how to apply|apply|perks|our (?:team|company)|who we are|requirements?|qualifications?)/i;
+    for (let i = 0; i < linesArr.length; i++) {
+      if (headerRegex.test(linesArr[i])) {
+        const chunk = [];
+        for (let j = i + 1; j < linesArr.length && chunk.length < 12; j++) {
+          if (sectionStop.test(linesArr[j]) && linesArr[j].length < 60) break;
+          chunk.push(linesArr[j]);
+        }
+        const rest = chunk.join(" ");
+        const sentences = rest.match(/[^.!?]{20,}[.!?]+/g);
+        if (sentences?.length) {
+          const picked = sentences.filter((s) => {
+            const t = s.trim();
+            return t.length > 25 && !COMPANY_INTRO.test(t);
+          }).slice(0, maxSentences);
+          if (picked.length) return picked.join(" ").trim().slice(0, maxLen);
+        }
+        break;
+      }
+    }
+    return null;
+  }
+  summary = takeRoleSummaryFromLines(lines, ROLE_HEADERS);
+  if (!summary) {
+    const descSource = jsonLd?.description || text;
+    const sentences = descSource.match(/[^.!?]{15,}[.!?]+/g);
+    if (sentences?.length) {
+      const filtered = sentences.filter((s) => !COMPANY_INTRO.test(s.trim())).slice(0, 2);
+      if (filtered.length) summary = filtered.join(" ").trim().slice(0, 420);
+      else summary = sentences.slice(0, 2).join(" ").trim().slice(0, 420);
+    }
+  }
 
   return {
     title,
@@ -620,11 +717,13 @@ const KNOWN_BRAND_COLORS = {
   "via.transport": "#00C2FF",
   "zynga.com": "#E91D26",
   "kraken.com": "#5741D9",
+  "thumbtack.com": "#009FD9",
 };
 /** Known brand colors by company name (when domain is missing). Lowercase, no spaces. */
 const KNOWN_BRAND_COLORS_BY_NAME = {
   zynga: "#E91D26",
   kraken: "#5741D9",
+  thumbtack: "#009FD9",
 };
 
 function normalizeDomain(website) {
@@ -726,6 +825,7 @@ function getCss(T, isDark) {
       display: "flex",
       width: "100%",
       height: "100vh",
+      paddingTop: 0,
       background: T.bg,
       color: T.text,
       fontFamily: FONT_TEXT,
@@ -734,7 +834,7 @@ function getCss(T, isDark) {
       MozOsxFontSmoothing: "grayscale",
     },
     sidebar: { width: 220, minWidth: 220, background: T.sidebarBg, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", padding: "20px 12px" },
-    logo: { fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: T.text, letterSpacing: "-0.02em", padding: "0 8px 0", marginBottom: 0, display: "flex", alignItems: "center", gap: 0 },
+    logo: { fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: T.text, letterSpacing: "-0.02em", padding: "0 8px 0 0", marginBottom: 0, display: "flex", alignItems: "center", gap: 0 },
     bottomNav: {
       wrapper: { position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", justifyContent: "center", padding: "12px 16px max(12px, env(safe-area-inset-bottom))", zIndex: 50, pointerEvents: "none" },
       island: { pointerEvents: "auto", display: "flex", alignItems: "center", gap: 4, padding: "8px 12px 8px 12px", background: isDark ? "rgba(18,18,18,0.85)" : "rgba(255,255,255,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`, borderRadius: 100, boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.25)" : "0 4px 24px rgba(0,0,0,0.06)", fontFamily: FONT_TEXT },
@@ -865,8 +965,8 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
   );
   if (createdKey) {
     return (
-      <div style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
-        <div style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+      <div className="scout-overlay" style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
+        <div className="scout-modal" style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
             <div style={{ ...css.modalTitle, marginBottom: 0 }}>New key</div>
             <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
@@ -887,8 +987,8 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
   }
 
   return (
-    <div style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
-      <div style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+    <div className="scout-overlay" style={css.overlay} onClick={(e) => e.target === e.currentTarget && handleClose(false)}>
+      <div className="scout-modal" style={{ ...css.modal, maxWidth: 400, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ ...css.modalTitle, marginBottom: 0 }}>Sign up / Log in</div>
               <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
@@ -978,7 +1078,7 @@ function RecoverPage({ theme, onKeyRestored }) {
           </div>
           {error && <div style={{ color: "#f87171", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
           {message && <div style={{ color: T.accent, fontSize: 12.5, marginBottom: 12 }}>{message}</div>}
-          <button type="submit" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14 }} disabled={loading}>{loading ? "…" : "Send recovery link"}</button>
+          <button type="submit" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }} disabled={loading}>{loading ? <><Spinner /> Sending…</> : "Send recovery link"}</button>
         </form>
         <p style={{ fontSize: 12, color: T.textMuted, marginTop: 20 }}>
           <a href="/" style={{ color: T.accent, textDecoration: "none" }}>← Back to Scout</a>
@@ -1043,20 +1143,23 @@ export default function App() {
 
   const T = THEMES[theme];
   const isDark = theme === "dark";
-  const css = getCss(T, isDark);
-  const chevronSvg = (stroke) => `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='${encodeURIComponent(stroke)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2 5l4 4 4-4'/%3E%3C/svg%3E")`;
-  const ChevronIcon = ({ down = true, size = 10, color }) => (
-    <span style={{
-      display: "inline-block",
-      width: size,
-      height: size,
-      backgroundImage: chevronSvg(color || T.textSec),
-      backgroundRepeat: "no-repeat",
-      backgroundPosition: "center",
-      backgroundSize: "contain",
-      transform: down ? undefined : "rotate(180deg)",
-    }} />
-  );
+  const css = useMemo(() => getCss(T, isDark), [theme]);
+
+  const ChevronIcon = useCallback(({ down = true, size = 10, color }) => {
+    const svg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='${encodeURIComponent(color || T.textSec)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2 5l4 4 4-4'/%3E%3C/svg%3E")`;
+    return (
+      <span style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        backgroundImage: svg,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "center",
+        backgroundSize: "contain",
+        transform: down ? undefined : "rotate(180deg)",
+      }} />
+    );
+  }, [T.textSec]);
 
   useEffect(() => {
     if (key && isValidScoutKey(key)) {
@@ -1082,7 +1185,6 @@ export default function App() {
     })();
   }, []);
 
-  // Fetch brand colors via server (Claude once per company; server caches in data/brand_colors.json)
   // Table column resize: global mousemove/mouseup when dragging a column edge
   useEffect(() => {
     if (!resizingColumn) return;
@@ -1179,9 +1281,13 @@ export default function App() {
     companies.forEach((co) => {
       const domain = normalizeDomain(co.website);
       const cacheKey = domain || (co.name || "").toLowerCase().replace(/\s+/g, "");
-      if (!cacheKey || brandColorsByDomain[cacheKey] !== undefined) return;
-      fetchBrandColor(co.website, co.name, headers).then((hex) => {
-        setBrandColorsByDomain((prev) => ({ ...prev, [cacheKey]: hex ?? null }));
+      if (!cacheKey) return;
+      setBrandColorsByDomain((prev) => {
+        if (prev[cacheKey] !== undefined) return prev;
+        fetchBrandColor(co.website, co.name, headers).then((hex) => {
+          setBrandColorsByDomain((p) => ({ ...p, [cacheKey]: hex ?? null }));
+        });
+        return prev;
       });
     });
   }, [companies, key]);
@@ -1311,6 +1417,38 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    if (!modal) return;
+    const onKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (modal === "addCo") {
+        setModal(null);
+        setCoName("");
+        setCoData(null);
+      } else if (modal === "addJob") {
+        setModal(null);
+        setJobData(null);
+        setJobDesc("");
+        setJobLink("");
+        setJobCoId("");
+        setJobInputMode("url");
+        setJobPriority("medium");
+        setFetchError(null);
+        setImportStep(null);
+        resetManualJobForm();
+      } else if (modal === "job") {
+        setEditing(null);
+        setModal(null);
+        setJobDetailMenuOpen(false);
+      } else {
+        setModal(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [modal]);
+
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -1330,7 +1468,6 @@ export default function App() {
   const [jobPriority, setJobPriority] = useState("medium");
   const [newJobStatus, setNewJobStatus] = useState("interested");
   const [fetchError, setFetchError] = useState(null);
-  const [debugLog, setDebugLog] = useState([]);
   const [manualTitle, setManualTitle] = useState("");
   const [manualCompanyId, setManualCompanyId] = useState("");
   const [manualCompanyName, setManualCompanyName] = useState("");
@@ -1412,55 +1549,42 @@ export default function App() {
       return;
     }
     setFetchError(null);
-    setDebugLog([]);
-    const log = (msg) => setDebugLog(p => [...p, msg]);
     if (isBlockedUrl(jobLink)) { setFetchError("blocked"); return; }
     setLoading(true);
     setImportStep("scraping");
 
-    const PROXY_BASE = import.meta.env.VITE_JOB_PROXY_BASE || "/api/job";
+    const PROXY_BASE = import.meta.env.VITE_JOB_PROXY_BASE || ((API_BASE || "") + "/api/job");
 
     try {
       let rawText = null;
       let prefill = {};
       let jsonLd = null;
 
-      // Step 1: Try ATS API proxy for platforms with public APIs
       const ats = detectATS(jobLink);
       const ATS_WITH_API = ["greenhouse", "lever", "ashby", "smartrecruiters", "workday"];
       if (ats) {
-        log(`ATS detected: ${ats.ats}`);
         const company = ats.boardSlug || ats.company;
         if (company && ats.jobId && ATS_WITH_API.includes(ats.ats)) {
           const proxyUrl = `${PROXY_BASE}?ats=${ats.ats}&company=${encodeURIComponent(company)}&jobId=${encodeURIComponent(ats.jobId)}`;
-          log(`→ ATS proxy`);
           try {
             const res = await fetch(proxyUrl);
             const data = await res.json();
             if (res.ok && data.content) {
-              log(`← OK (${data.content.length} chars)`);
               rawText = data.content;
               prefill = {
                 title: data.title, location: data.location,
                 companyName: data.companyName, salary: data.salary || null,
               };
-            } else {
-              log(`← ATS proxy failed: ${data.error || res.status}`);
             }
-          } catch (e) {
-            log(`← ATS proxy error: ${e.message}`);
-          }
+          } catch (_) {}
         }
       }
 
-      // Step 2: Scrape the page if ATS proxy didn't return content
       if (!rawText) {
-        log(`→ Scraping page`);
         try {
-          const res = await fetch(`/api/scrape?url=${encodeURIComponent(jobLink)}`);
+          const res = await fetch((API_BASE || "") + `/api/scrape?url=${encodeURIComponent(jobLink)}`);
           const data = await res.json();
           if (res.ok && data.content) {
-            log(`← OK (${data.content.length} chars${data.jsonLd ? ", has JSON-LD" : ""})`);
             rawText = data.content;
             jsonLd = data.jsonLd || null;
             prefill = {
@@ -1469,36 +1593,34 @@ export default function App() {
               companyName: data.companyName || prefill.companyName,
               salary: data.salary || null,
             };
-          } else {
-            log(`← Scrape failed: ${data.error || res.status}`);
           }
-        } catch (e) {
-          log(`← Scrape error: ${e.message}`);
-        }
+        } catch (_) {}
       }
 
-      // Step 3: Extract with free heuristic parser
       if (rawText) {
-        log(`→ Extracting (free)`);
         const parsed = extractJobFree(rawText, prefill, jsonLd);
 
-        // Step 4: Selective AI cleanup when scraping has gaps
         const hasFullJsonLd = jsonLd && jsonLd.title && jsonLd.salary && jsonLd.location;
         const titleWeak = !parsed.title || parsed.title.length > 60 || /[|–—]/.test(parsed.title);
+        const summaryFallback = parsed.summary === "Job posting imported. See link for full details.";
+        const summaryGeneric = !summaryFallback && parsed.summary && (
+          parsed.summary.length < 50 ||
+          /^(?:we are|we're|at\s+[a-z]+,?\s+we|join (?:our|us)|our (?:mission|team|company)|[A-Za-z]+\s+is\s+(?:a|an)\s+)/i.test(parsed.summary.trim())
+        );
         const needsAI = !hasFullJsonLd && (
           !parsed.salary
           || titleWeak
-          || parsed.summary === "Job posting imported. See link for full details."
+          || summaryFallback
+          || summaryGeneric
           || (parsed.requirements.length === 1 && parsed.requirements[0] === "See job description")
         );
 
         if (needsAI) {
           setImportStep("ai");
-          log(`→ Cleaning up with AI…`);
           try {
-            const already = { title: parsed.title, companyName: parsed.companyName, location: parsed.location, salary: parsed.salary };
+            const already = { title: parsed.title, companyName: parsed.companyName, location: parsed.location, salary: parsed.salary, summary: parsed.summary };
             const aiText = await callClaude(
-              `Here is scraped job posting text. Fill in missing/improve fields.\nAlready extracted: ${JSON.stringify(already)}\n\nJob text:\n${rawText.slice(0, 4000)}`,
+              `Scraped job posting. Fill in missing fields and improve weak ones. Current extracted: ${JSON.stringify(already)}\n\nIf the current summary is missing or sounds like company intro (e.g. "We are..."), write a 2-3 sentence summary of THE ROLE: what the candidate will do, scope, impact.\n\nJob text:\n${rawText.slice(0, 6000)}`,
               AI_CLEANUP_SYSTEM
             );
             const aiData = JSON.parse(aiText.replace(/```json|```/g, "").trim());
@@ -1509,20 +1631,18 @@ export default function App() {
             if (!parsed.location || parsed.location === "Remote") {
               if (aiData.location && aiData.location !== "null") { parsed.location = aiData.location; aiFields.push("location"); }
             }
-            if (parsed.summary === "Job posting imported. See link for full details." && aiData.summary) { parsed.summary = aiData.summary; aiFields.push("summary"); }
+            if (aiData.summary && (summaryFallback || summaryGeneric || !parsed.summary)) {
+              parsed.summary = aiData.summary;
+              aiFields.push("summary");
+            }
             if (parsed.requirements.length === 1 && parsed.requirements[0] === "See job description" && aiData.requirements?.length) {
               parsed.requirements = aiData.requirements; aiFields.push("requirements");
             }
             if (aiFields.length > 0) {
               parsed._aiAssisted = true;
               parsed._aiFields = aiFields;
-              log(`← AI filled: ${aiFields.join(", ")}`);
-            } else {
-              log(`← AI had nothing to add`);
             }
-          } catch (e) {
-            log(`← AI cleanup skipped (${e.message})`);
-          }
+          } catch (_) {}
         }
 
         setJobData(parsed);
@@ -1530,7 +1650,6 @@ export default function App() {
         setFetchError("failed");
       }
     } catch (e) {
-      log(`Error: ${e.message}`);
       setFetchError(e.message || "failed");
     }
     setImportStep(null);
@@ -1542,9 +1661,9 @@ export default function App() {
     setLoading(true);
     try {
       const text = await callClaude(
-        `Extract info from this job description:\n\n${sourceText.slice(0, 4000)}`,
+        `Extract info from this job description:\n\n${sourceText.slice(0, 6000)}`,
         `You are a job description parser. Return ONLY raw JSON (no markdown, no backticks):
-{"title":"job title","companyName":"company name if mentioned, else null","location":"location or Remote","salary":"salary range or null","requirements":["key requirement 1","key requirement 2","key requirement 3"],"niceToHave":["nice 1","nice 2"],"summary":"A 2-sentence summary of the job/role only. Plain text or simple HTML (e.g. <p>). No long pasted description."}`
+{"title":"job title","companyName":"company name if mentioned, else null","location":"location or Remote","salary":"salary range or null","requirements":["key requirement 1","key requirement 2","key requirement 3"],"niceToHave":["nice 1","nice 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do not describe the company or use intros like 'We are...'. Plain text."}`
       );
       setJobData(JSON.parse(text.replace(/```json|```/g, "").trim()));
     } catch (e) { console.error(e); setFetchError(e.message || "AI refinement failed"); }
@@ -1718,7 +1837,14 @@ export default function App() {
     return list;
   };
   const jobStatus = (j) => (j.status || "").toLowerCase();
-  const byStatus = (s) => filterAndSortJobs(jobs.filter((j) => jobStatus(j) === s));
+  const jobsByStatus = useMemo(() => {
+    const map = {};
+    for (const st of STATUSES) {
+      map[st.id] = filterAndSortJobs(jobs.filter((j) => jobStatus(j) === st.id));
+    }
+    return map;
+  }, [jobs, boardSearch, priorityFilter, sortBy, companies]);
+  const byStatus = (s) => jobsByStatus[s] || [];
   const totalActive = jobs.filter(j => jobStatus(j) !== "rejected").length;
 
   if (pathname === "/recover" && recoverToken) {
@@ -1763,7 +1889,7 @@ export default function App() {
               <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <button style={css.btn("primary")} onClick={() => setModal("addJob")}>+ Add Job</button>
             <div style={{ position: "relative" }}>
               {key ? (
@@ -1800,7 +1926,7 @@ export default function App() {
                         <>
                           <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                             <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 12 }} />
-                            <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap" }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? "…" : "Save"}</button>
+                            <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
                           </div>
                           <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
                         </>
@@ -2030,7 +2156,7 @@ export default function App() {
                             <div style={{ fontSize: 11, opacity: 0.9, marginTop: 1 }}>Added {timeAgo(job.addedAt)}</div>
                           </div>
                         </div>
-                        <div style={{ fontSize: 20, fontWeight: 600, fontFamily: FONT_DISPLAY, color: "inherit", lineHeight: 1.2, marginBottom: 10, paddingBottom: 16, letterSpacing: "-0.02em" }}>{job.title}</div>
+                        <div style={{ fontSize: 20, fontWeight: 600, fontFamily: FONT_DISPLAY, color: "inherit", lineHeight: 1.2, marginBottom: 10, paddingTop: 8, paddingBottom: 16, letterSpacing: "-0.02em" }}>{job.title}</div>
                         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
                           {(() => {
                             const pr = PRIORITIES.find((p) => p.id === (job.priority || "medium"));
@@ -2316,6 +2442,7 @@ export default function App() {
             {companies.length === 0 ? (
               <div style={{ color: T.textMuted, fontSize: 14, padding: 48, fontWeight: 500, letterSpacing: "-0.01em" }}>No companies yet. Add a job to the board to get started.</div>
             ) : (
+            <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
               {companies.map(co => {
                 const coColor = getCompanyColorForDisplay(co);
@@ -2323,32 +2450,34 @@ export default function App() {
                 const coJobs = jobs.filter(j => j.companyId === co.id);
                 const is = (field) => editing?.context === "company" && editing?.id === co.id && editing?.field === field;
                 return (
-                  <div key={co.id} style={{ ...css.card, background: coColor, color: cardFg, border: "none", borderRadius: 16, padding: 22 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: cardFg, flexShrink: 0, letterSpacing: "-0.02em", boxShadow: "none" }}>
-                        {initials(co.name)}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <EditableField isEditing={is("name")} value={co.name} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "name", co.name)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Company name" displayStyle={{ fontSize: 15, fontWeight: 700, fontFamily: FONT_DISPLAY, color: cardFg, letterSpacing: "-0.02em" }} inputStyle={css.input} />
-                        <EditableField isEditing={is("website")} value={co.website} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "website", co.website)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="website.com" emptyLabel="Add website" displayStyle={{ fontSize: 12, color: cardFg, opacity: 0.85 }} inputStyle={css.input} />
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: 16 }}>
-                      <EditableField isEditing={is("description")} value={co.description} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "description", co.description)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Company description" multiline displayStyle={{ fontSize: 13, color: cardFg, opacity: 0.9, lineHeight: 1.6, letterSpacing: "-0.01em" }} inputStyle={css.input} />
-                    </div>
-                    <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 16 }}>
-                      {[["Stage", "stage"], ["Size", "size"]].map(([label, field]) => (
-                        <div key={field}>
-                          <div style={{ ...css.infoLabel, color: cardFg, opacity: 0.75 }}>{label}</div>
-                          <EditableField isEditing={is(field)} value={co[field]} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, field, co[field])} onEditingChange={setEditingValue} onSave={saveEdit} placeholder={label} emptyLabel="—" displayStyle={{ fontSize: 13, color: cardFg, fontWeight: 600, letterSpacing: "-0.01em" }} inputStyle={css.input} />
+                  <div key={co.id} style={{ ...css.card, display: "flex", flexDirection: "column", background: coColor, color: cardFg, border: "none", borderRadius: 16, padding: 22 }}>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: cardFg, flexShrink: 0, letterSpacing: "-0.02em", boxShadow: "none" }}>
+                          {initials(co.name)}
                         </div>
-                      ))}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <EditableField isEditing={is("name")} value={co.name} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "name", co.name)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Company name" displayStyle={{ fontSize: 15, fontWeight: 700, fontFamily: FONT_DISPLAY, color: cardFg, letterSpacing: "-0.02em" }} inputStyle={css.input} />
+                          <EditableField isEditing={is("website")} value={co.website} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "website", co.website)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="website.com" emptyLabel="Add website" displayStyle={{ fontSize: 12, color: cardFg, opacity: 0.85 }} inputStyle={css.input} />
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <EditableField isEditing={is("description")} value={co.description} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "description", co.description)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Company description" multiline displayStyle={{ fontSize: 13, color: cardFg, opacity: 0.9, lineHeight: 1.6, letterSpacing: "-0.01em" }} inputStyle={css.input} />
+                      </div>
+                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 16 }}>
+                        {[["Stage", "stage", null], ["Size", "size", " employees"]].map(([label, field, suffix]) => (
+                          <div key={field}>
+                            <div style={{ ...css.infoLabel, color: cardFg, opacity: 0.75 }}>{label}</div>
+                            <EditableField isEditing={is(field)} value={co[field]} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, field, co[field])} onEditingChange={setEditingValue} onSave={saveEdit} placeholder={label} emptyLabel="—" displaySuffix={suffix} displayStyle={{ fontSize: 13, color: cardFg, fontWeight: 600, letterSpacing: "-0.01em" }} inputStyle={css.input} />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ ...css.infoLabel, color: cardFg, opacity: 0.75 }}>Leaders</div>
+                        <EditableField isEditing={is("designLeaders")} value={co.designLeaders} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "designLeaders", co.designLeaders)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Main leaders at the company" emptyLabel="—" displayStyle={{ fontSize: 13, color: cardFg, opacity: 0.9, letterSpacing: "-0.01em" }} inputStyle={css.input} />
+                      </div>
                     </div>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ ...css.infoLabel, color: cardFg, opacity: 0.75 }}>Leaders</div>
-                      <EditableField isEditing={is("designLeaders")} value={co.designLeaders} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "designLeaders", co.designLeaders)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Main leaders at the company" emptyLabel="—" displayStyle={{ fontSize: 13, color: cardFg, opacity: 0.9, letterSpacing: "-0.01em" }} inputStyle={css.input} />
-                    </div>
-                    <div style={{ borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.1)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.1)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                       <span style={{ fontSize: 13, color: cardFg, opacity: 0.9, fontWeight: 500 }}>{coJobs.length} job{coJobs.length !== 1 ? "s" : ""} tracked</span>
                       <button style={{ background: "rgba(255,255,255,0.95)", color: "#1a1a1a", border: "none", borderRadius: 12, padding: "8px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: FONT_TEXT }} onClick={() => { setJobCoId(co.id); setModal("addJob"); }}>+ Add Job</button>
                     </div>
@@ -2356,6 +2485,7 @@ export default function App() {
                 );
               })}
             </div>
+            </>
             )}
           </div>
         )}
@@ -2446,7 +2576,7 @@ export default function App() {
                   <div style={{ fontSize: 11, opacity: 0.9, marginTop: 1 }}>Added {timeAgo(job.addedAt)}</div>
                 </div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 600, fontFamily: FONT_DISPLAY, color: "inherit", lineHeight: 1.2, marginBottom: 10, paddingBottom: 16, letterSpacing: "-0.02em" }}>{job.title}</div>
+              <div style={{ fontSize: 20, fontWeight: 600, fontFamily: FONT_DISPLAY, color: "inherit", lineHeight: 1.2, marginBottom: 10, paddingTop: 8, paddingBottom: 16, letterSpacing: "-0.02em" }}>{job.title}</div>
               <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
                 {pr && <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontFamily: FONT_TEXT, fontWeight: 600, borderLeft: `3px solid ${pr.color}`, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, letterSpacing: "-0.01em", boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span>}
                 {job.location && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.location}</span>}
@@ -2459,8 +2589,8 @@ export default function App() {
 
       {/* Add Company Modal */}
       {modal === "addCo" && (
-        <div style={css.overlay} onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div style={css.modal}>
+        <div className="scout-overlay" style={css.overlay} onClick={e => e.target === e.currentTarget && setModal(null)}>
+          <div className="scout-modal" style={css.modal}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
               <div style={css.modalTitle}>Add Company</div>
               <button type="button" onClick={() => { setModal(null); setCoName(""); setCoData(null); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
@@ -2469,8 +2599,8 @@ export default function App() {
               <label style={css.label}>Company Name</label>
               <div style={{ display: "flex", gap: 8 }}>
                 <input style={css.input} value={coName} onChange={e => setCoName(e.target.value)} placeholder="e.g. Stripe, Vercel, Figma..." onKeyDown={e => e.key === "Enter" && researchCompany()} />
-                <button style={{ ...css.btn("primary"), whiteSpace: "nowrap" }} onClick={researchCompany} disabled={loading || !coName.trim()}>
-                  {loading ? "..." : "✦ Research"}
+                <button style={{ ...css.btn("primary"), whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={researchCompany} disabled={loading || !coName.trim()}>
+                  {loading ? <><Spinner /> Researching…</> : "✦ Research"}
                 </button>
               </div>
             </div>
@@ -2488,7 +2618,7 @@ export default function App() {
                 </div>
                 <div style={{ fontSize: 13, color: T.textSec, lineHeight: 1.6, marginBottom: 14 }}>{coData.description}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {[["Stage", coData.stage], ["Size", coData.size], ["Design Team", coData.designTeamSize], ["Design Leaders", coData.designLeaders]].map(([k, v]) => (
+                  {[["Stage", coData.stage], ["Size", coData.size], ["Design Team", coData.designTeamSize], ["Leaders", coData.designLeaders]].map(([k, v]) => (
                     <div key={k}><div style={css.infoLabel}>{k}</div><div style={css.infoVal}>{v || "—"}</div></div>
                   ))}
                 </div>
@@ -2511,8 +2641,8 @@ export default function App() {
           setModal(null); setJobData(null); setJobDesc(""); setJobLink(""); setJobCoId(""); setJobInputMode("url"); setJobPriority("medium"); setFetchError(null); setImportStep(null); resetManualJobForm();
         };
         return (
-        <div style={css.overlay} onClick={e => e.target === e.currentTarget && closeAddJobModal()}>
-          <div style={css.modal}>
+        <div className="scout-overlay" style={css.overlay} onClick={e => e.target === e.currentTarget && closeAddJobModal()}>
+          <div className="scout-modal" style={css.modal}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ ...css.modalTitle, marginBottom: 0 }}>Add Job</div>
               <button type="button" onClick={closeAddJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
@@ -2614,26 +2744,13 @@ export default function App() {
                     onKeyDown={e => e.key === "Enter" && extractFromUrl()}
                   />
                   <button style={{ ...css.btn("primary"), whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={extractFromUrl} disabled={loading || !jobLink.trim()}>
-                    {loading ? "..." : <><span style={{ fontSize: 14 }}>✨</span> Import</>}
+                    {loading ? <><Spinner /> Importing…</> : <><span style={{ fontSize: 14 }}>✨</span> Import</>}
                   </button>
                 </div>
                 {loading && (
                   <div style={{ marginTop: 10, fontSize: 12, color: T.textSec, display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: T.accent, animation: "pulse 1.2s infinite" }} />
                     {importStep === "ai" ? "Cleaning up with AI…" : "Scraping job posting…"}
-                  </div>
-                )}
-                {debugLog.length > 0 && (
-                  <div style={{
-                    marginTop: 10,
-                    background: T.surfaceHover,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                  }}>
-                    {debugLog.map((l, i) => (
-                      <div key={i} style={{ fontSize: 11, fontFamily: "monospace", color: T.textSec, lineHeight: 1.6 }}>{l}</div>
-                    ))}
                   </div>
                 )}
                 {fetchError === "blocked" && (
@@ -2715,8 +2832,8 @@ export default function App() {
         const detailCoColor = detailCo ? getCompanyColorForDisplay(detailCo) : T.accent;
         const closeJobModal = () => { setEditing(null); setModal(null); setJobDetailMenuOpen(false); };
         return (
-        <div style={css.overlay} onClick={e => { if (e.target === e.currentTarget) closeJobModal(); }}>
-          <div style={{ ...css.modal, maxWidth: 600, overflow: "visible", padding: 0, borderTop: `4px solid ${detailCoColor}`, borderLeft: "none", borderRight: "none" }}>
+        <div className="scout-overlay" style={css.overlay} onClick={e => { if (e.target === e.currentTarget) closeJobModal(); }}>
+          <div className="scout-modal" style={{ ...css.modal, maxWidth: 600, overflow: "visible", padding: 0, borderTop: `4px solid ${detailCoColor}`, borderLeft: "none", borderRight: "none" }}>
             {/* Brand-color header: company, title, location, salary, actions — ends before description */}
             {(() => {
               const headerFg = textOnColor(detailCoColor);
@@ -2724,65 +2841,27 @@ export default function App() {
               const btnOnBrand = { background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: headerFg, textDecoration: "none", fontSize: 11.5, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontFamily: FONT_TEXT };
               return (
             <div style={{ background: detailCoColor, color: headerFg, padding: "20px 28px 32px", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {detailCo && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: headerFg, flexShrink: 0, boxShadow: "none" }}>
-                      {initials(detailCo.name)}
-                    </div>
-                    <EditableField
-                      isEditing={editing?.context === "company" && editing?.id === activeJob.companyId && editing?.field === "name"}
-                      value={detailCo.name}
-                      editingValue={editingValue}
-                      onStartEdit={() => startEdit("company", activeJob.companyId, "name", detailCo.name)}
-                      onEditingChange={setEditingValue}
-                      onSave={saveEdit}
-                      displayStyle={{ fontSize: 15, color: headerFg, fontWeight: 600, letterSpacing: "-0.01em" }}
-                      inputStyle={{ ...css.input, background: T.surface, color: T.text }}
-                    />
+            {/* Row 1: Company name + View Job, menu, close */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, paddingBottom: 24 }}>
+              {detailCo && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: headerFg, flexShrink: 0, boxShadow: "none" }}>
+                    {initials(detailCo.name)}
                   </div>
-                )}
-                <div style={{ marginBottom: 8 }}>
                   <EditableField
-                    isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "title"}
-                    value={activeJob.title}
+                    isEditing={editing?.context === "company" && editing?.id === activeJob.companyId && editing?.field === "name"}
+                    value={detailCo.name}
                     editingValue={editingValue}
-                    onStartEdit={() => startEdit("job", activeJob.id, "title", activeJob.title)}
+                    onStartEdit={() => startEdit("company", activeJob.companyId, "name", detailCo.name)}
                     onEditingChange={setEditingValue}
                     onSave={saveEdit}
-                    placeholder="Job title"
-                    displayStyle={{ fontSize: 22, fontWeight: 700, fontFamily: FONT_DISPLAY, color: headerFg, lineHeight: 1.25, letterSpacing: "-0.03em" }}
+                    displayStyle={{ fontSize: 15, color: headerFg, fontWeight: 600, letterSpacing: "-0.01em" }}
                     inputStyle={{ ...css.input, background: T.surface, color: T.text }}
                   />
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", alignItems: "center", fontSize: 13, color: headerFgMuted }}>
-                  <EditableField
-                    isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "location"}
-                    value={activeJob.location}
-                    editingValue={editingValue}
-                    onStartEdit={() => startEdit("job", activeJob.id, "location", activeJob.location)}
-                    onEditingChange={setEditingValue}
-                    onSave={saveEdit}
-                    placeholder="Location"
-                    displayStyle={{ fontSize: 13, color: headerFgMuted }}
-                    inputStyle={{ ...css.input, background: T.surface, color: T.text }}
-                  />
-                  <span style={{ opacity: 0.7 }}>·</span>
-                  <EditableField
-                    isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "salary"}
-                    value={activeJob.salary}
-                    editingValue={editingValue}
-                    onStartEdit={() => startEdit("job", activeJob.id, "salary", activeJob.salary)}
-                    onEditingChange={setEditingValue}
-                    onSave={saveEdit}
-                    placeholder="Salary"
-                    displayStyle={{ fontSize: 13, color: headerFgMuted }}
-                    inputStyle={{ ...css.input, background: T.surface, color: T.text }}
-                  />
-                </div>
-              </div>
+              )}
               <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: headerFgMuted, letterSpacing: "-0.01em", paddingRight: 4 }}>Added {timeAgo(activeJob.addedAt)}</span>
                 {activeJob.link && (
                   <a href={activeJob.link} target="_blank" rel="noopener noreferrer" style={btnOnBrand}>↗ View Job</a>
                 )}
@@ -2800,11 +2879,51 @@ export default function App() {
                 <button type="button" onClick={closeJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: headerFg, opacity: 0.9 }} aria-label="Close">×</button>
               </div>
             </div>
+            {/* Row 2: Job title */}
+            <div style={{ marginBottom: 8 }}>
+              <EditableField
+                isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "title"}
+                value={activeJob.title}
+                editingValue={editingValue}
+                onStartEdit={() => startEdit("job", activeJob.id, "title", activeJob.title)}
+                onEditingChange={setEditingValue}
+                onSave={saveEdit}
+                placeholder="Job title"
+                displayStyle={{ fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: headerFg, lineHeight: 1.25, letterSpacing: "-0.02em" }}
+                inputStyle={{ ...css.input, background: T.surface, color: T.text }}
+              />
+            </div>
+            {/* Row 3: Location · Salary */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", alignItems: "center", fontSize: 13, color: headerFgMuted }}>
+              <EditableField
+                isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "location"}
+                value={activeJob.location}
+                editingValue={editingValue}
+                onStartEdit={() => startEdit("job", activeJob.id, "location", activeJob.location)}
+                onEditingChange={setEditingValue}
+                onSave={saveEdit}
+                placeholder="Location"
+                displayStyle={{ fontSize: 13, color: headerFgMuted }}
+                inputStyle={{ ...css.input, background: T.surface, color: T.text }}
+              />
+              <span style={{ opacity: 0.7 }}>·</span>
+              <EditableField
+                isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "salary"}
+                value={activeJob.salary}
+                editingValue={editingValue}
+                onStartEdit={() => startEdit("job", activeJob.id, "salary", activeJob.salary)}
+                onEditingChange={setEditingValue}
+                onSave={saveEdit}
+                placeholder="Salary"
+                displayStyle={{ fontSize: 13, color: headerFgMuted }}
+                inputStyle={{ ...css.input, background: T.surface, color: T.text }}
+              />
+            </div>
             </div>
               );
             })()}
 
-            <div style={{ padding: "0 28px 28px", position: "relative" }}>
+            <div style={{ padding: "0 28px 0", position: "relative" }}>
             <div style={{ marginTop: 24, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.border}` }}>
               {editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "summary" ? (
                 <textarea
@@ -2909,22 +3028,18 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <textarea
                     style={{ ...css.textarea, minHeight: 56, resize: "vertical", flex: 1 }}
                     value={newNoteInput}
                     onChange={e => setNewNoteInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNote(activeJob.id, newNoteInput); setNewNoteInput(""); } }}
-                    placeholder="Add a note (contacts, interview prep, gut feelings...)"
+                    placeholder="Add a note (Interview notes, prep, gut feelings, dates to remember...)"
                     rows={2}
                   />
                   <button type="button" style={css.btn("primary")} onClick={() => { addNote(activeJob.id, newNoteInput); setNewNoteInput(""); }} disabled={!newNoteInput.trim()}>Add</button>
                 </div>
               </div>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <span style={{ fontSize: 12, color: T.textMuted, letterSpacing: "-0.01em" }}>Added {timeAgo(activeJob.addedAt)}</span>
             </div>
             </div>
           </div>

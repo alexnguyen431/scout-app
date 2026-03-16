@@ -5,8 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- SF Pro: use system stack (-apple-system on Apple = SF Pro); no webfont needed on macOS/iOS -->
-    <title>Scout</title>
+    <title>Scout — Job &amp; company tracking board</title>
     <style>
+      @keyframes scout-overlay-fade {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes scout-modal-in {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes scout-spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      .scout-overlay { animation: scout-overlay-fade 0.22s ease-out; }
+      .scout-modal { animation: scout-modal-in 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
       /* 13–16 inch screens: columns flex to fill width, no horizontal scroll */
       @media (min-width: 1280px) and (max-width: 1920px) {
         .kanban-scroll-container { overflow-x: hidden !important; }

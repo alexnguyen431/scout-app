@@ -82,6 +82,8 @@ const KNOWN_BRAND_COLORS_SERVER = {
   zynga: "#E91D26",
   "kraken.com": "#5741D9",
   kraken: "#5741D9",
+  "thumbtack.com": "#009FD9",
+  thumbtack: "#009FD9",
 };
 
 async function readBrandColors() {
@@ -120,13 +122,13 @@ function normalizeCompanyKey(name) {
 }
 
 const COMPANY_RESEARCH_SYSTEM = `You are a career researcher. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
-{"name":"official name","description":"2-3 sentences on what they do and their design culture","size":"headcount range e.g. 200-500","stage":"e.g. Series B, Public","designTeamSize":"estimated design headcount","designLeaders":"Head of Design or notable design leaders if known","culture":"2-3 words on culture and craft expectations","website":"domain only e.g. company.com"}`;
+{"name":"official name","description":"2-3 sentences on what they do and their design culture","size":"employee count range e.g. 200-500 (number or range only, no word 'employees')","stage":"e.g. Series B, Public","designTeamSize":"estimated design headcount","designLeaders":"CEO and/or founders/co-founders only (names and titles). NEVER include: Chief Design Officer, Chief Brand Officer, Head of Design, VP Design, or any design/UX/brand executive—only the top executive (CEO) and company founders/co-founders. If none are easily found, use empty string.","culture":"2-3 words on culture and craft expectations","website":"domain only e.g. company.com"}`;
 
 async function fetchCompanyResearchViaClaude(companyName) {
   if (!ANTHROPIC_KEY || !companyName) return null;
   try {
     const text = await handleClaudeProxy({
-      userMsg: `Research this company for a designer evaluating job opportunities: "${companyName}"`,
+      userMsg: `Research this company: "${companyName}". In the designLeaders field put ONLY the CEO and/or founders/co-founders (name and title). Do not put Chief Design Officer, Chief Brand Officer, Head of Design, or any design/UX leader—only CEO or founders.`,
       systemMsg: COMPANY_RESEARCH_SYSTEM,
       useWebSearch: false,
     });
@@ -404,7 +406,15 @@ async function handleScrape(targetUrl) {
   if (buf.byteLength > MAX_BODY) throw new Error("Page too large");
   const html = new TextDecoder("utf-8").decode(buf);
 
-  return extractFromHtml(html, targetUrl);
+  const result = extractFromHtml(html, targetUrl);
+  // AI fallback for salary when pattern matching found nothing
+  if (!result.salary && result.content && result.content.length > 400) {
+    try {
+      const aiSalary = await extractSalaryViaAI(result.content);
+      if (aiSalary) result.salary = aiSalary;
+    } catch (_) {}
+  }
+  return result;
 }
 
 function extractFromHtml(html, sourceUrl) {
@@ -450,6 +460,20 @@ function extractFromHtml(html, sourceUrl) {
   // Strip HTML to text (remove script, style, nav, footer, header tags and their content)
   let bodyHtml = html.replace(/<head[\s\S]*?<\/head>/gi, "");
   bodyHtml = bodyHtml.replace(/<(script|style|nav|footer|header|noscript|svg|iframe)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  // Prefer main content or job-description block when present (cleaner role text for extraction)
+  let mainBlock = null;
+  const mainMatch = bodyHtml.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  if (mainMatch && stripHtml(mainMatch[1]).trim().length >= 200) mainBlock = mainMatch[1];
+  if (!mainBlock) {
+    const jobDescRe = /<div[^>]*class="[^"]*job[-_\s]?description[^"]*"[^>]*>([\s\S]*?)<\/div>/i;
+    const jobMatch = bodyHtml.match(jobDescRe);
+    if (jobMatch && stripHtml(jobMatch[1]).trim().length >= 200) mainBlock = jobMatch[1];
+  }
+  if (!mainBlock) {
+    const articleMatch = bodyHtml.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+    if (articleMatch && stripHtml(articleMatch[1]).trim().length >= 200) mainBlock = articleMatch[1];
+  }
+  if (mainBlock) bodyHtml = mainBlock;
   const content = stripHtml(bodyHtml);
 
   // Build result: prefer JSON-LD > OG > title tag
@@ -461,7 +485,8 @@ function extractFromHtml(html, sourceUrl) {
       companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase();
     }
   } catch (_) {}
-  const location = jsonLd?.location || null;
+  let location = jsonLd?.location || null;
+  if (!location) location = extractLocationFromText(content) || null;
   let salary = jsonLd?.salary || null;
   if (!salary) salary = extractSalaryFromText(content) || null;
 
@@ -472,7 +497,8 @@ function extractFromHtml(html, sourceUrl) {
   if (/<[a-z][\s\S]*>/i.test(finalContent)) finalContent = stripHtml(finalContent);
   finalContent = finalContent.slice(0, 15000).trim();
 
-  // Salary: also try final content (e.g. og:description for Workable when body is empty)
+  // Location & salary: also try final content (e.g. when body was empty)
+  if (!location) location = extractLocationFromText(finalContent) || null;
   if (!salary) salary = extractSalaryFromText(finalContent) || null;
 
   return {
@@ -552,12 +578,44 @@ function decodeHtmlEntities(str) {
     .replace(/&nbsp;/g, " ");
 }
 
+/** Format a number with commas (e.g. 182700 -> "182,700"). */
+function formatNum(n) {
+  const s = String(Math.floor(Number(n)));
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 /** Extract first salary range from plain text (used when API/JSON-LD has none). */
 function extractSalaryFromText(text) {
   if (!text || typeof text !== "string") return null;
+  // Multi-zone / "base pay ranges" (e.g. Atlassian: Zone A: USD 182700 - USD 238525, Zone B: ...)
+  const zoneRangeRe = /(?:USD|CAD|GBP|EUR)\s*([\d,]+)\s*(?:[-–—]+|to)\s*(?:(?:USD|CAD|GBP|EUR)\s*)?([\d,]+)/gi;
+  const zoneMatches = [...text.matchAll(zoneRangeRe)];
+  if (zoneMatches.length > 0) {
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    let currency = "USD";
+    for (const m of zoneMatches) {
+      const low = Number(m[1].replace(/,/g, ""));
+      const high = Number(m[2].replace(/,/g, ""));
+      if (!Number.isNaN(low) && !Number.isNaN(high)) {
+        if (low < minVal) minVal = low;
+        if (high > maxVal) maxVal = high;
+        if (/USD/i.test(m[0])) currency = "USD";
+        else if (/CAD/i.test(m[0])) currency = "CAD";
+        else if (/GBP/i.test(m[0])) currency = "GBP";
+        else if (/EUR/i.test(m[0])) currency = "EUR";
+      }
+    }
+    if (minVal !== Infinity && maxVal !== Infinity && minVal <= maxVal) {
+      const s = `${currency} ${formatNum(minVal)} – ${currency} ${formatNum(maxVal)}`;
+      if (s.length < 120) return s;
+    }
+  }
   const patterns = [
     // "Salary: $X - $Y" / "Compensation: $X to $Y"
     /\b(?:salary|compensation|pay)\s*:?\s*\$[\d,]+\s*(?:[-–—]+|to)\s*\$[\d,]+/i,
+    // "USD 182700 - USD 238525" (currency repeated; Atlassian-style)
+    /(?:USD|CAD|GBP|EUR)\s*[\d,]+\s*(?:[-–—]+|to)\s*(?:(?:USD|CAD|GBP|EUR)\s*)?[\d,]+/i,
     // "CA$163,900 - CA$245,900" (Stripe and other Canadian format)
     /CA\$\s*[\d,]+\s*(?:[-–—]+|to)\s*CA\$\s*[\d,]+/gi,
     /(?:US|AU)\$\s*[\d,]+\s*(?:[-–—]+|to)\s*(?:US|AU)\$\s*[\d,]+/gi,
@@ -579,6 +637,9 @@ function extractSalaryFromText(text) {
       // Normalize "100k - 150k" -> "$100k – $150k" for display
       const kMatch = s.match(/^(\d+(?:,\d{3})*(?:\.\d+)?)\s*k\s*(?:[-–—]+|to)\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*k$/i);
       if (kMatch) s = `$${kMatch[1]}k – $${kMatch[2]}k`;
+      // Add commas to plain numbers in "USD 182700 – USD 238525" style
+      const usdMatch = s.match(/^(USD|CAD|GBP|EUR)\s*([\d,]+)\s*[-–—]\s*(?:\1\s*)?([\d,]+)$/i);
+      if (usdMatch) s = `${usdMatch[1]} ${formatNum(usdMatch[2])} – ${usdMatch[1]} ${formatNum(usdMatch[3])}`;
       if (s.length > 6 && s.length < 120) return s;
     }
   }
@@ -591,6 +652,52 @@ function extractCompanyFromUrl(url) {
     const name = host.split(".")[0];
     return name.charAt(0).toUpperCase() + name.slice(1);
   } catch {
+    return null;
+  }
+}
+
+/** Normalize and join multiple location parts (e.g. "City, State | City, State" -> "City, State / City, State"). */
+function normalizeMultiLocation(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const parts = raw
+    .split(/\s*\|\s*|\s*;\s*|\s+and\s+/i)
+    .map((p) => p.trim().replace(/\s+/g, " "))
+    .filter((p) => p.length > 2 && p.length < 120);
+  if (parts.length === 0) return null;
+  return parts.join(" / ");
+}
+
+/** Extract location(s) from job text, including pipe/semicolon-separated lists. */
+function extractLocationFromText(text) {
+  if (!text || typeof text !== "string") return null;
+  // "Location:" or "Locations:" line that may contain "City, State | City, State | ..."
+  const headerMatch = text.match(/(?:^|\n)\s*(?:location|locations|office)\s*:?\s*([^\n]+)/im);
+  if (headerMatch) {
+    const value = headerMatch[1].trim();
+    const normalized = normalizeMultiLocation(value);
+    if (normalized) return normalized;
+    if (value.length > 3 && value.length < 150) return value.trim();
+  }
+  // Standalone line or phrase like "San Francisco, California   |   Seattle, Washington   |   New York, New York"
+  const pipeLine = text.match(/[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+)\s*\|\s*[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+)(?:\s*\|\s*[A-Z][a-zA-Z\s,]+(?:,\s*[A-Z][a-zA-Z\s]+))*/);
+  if (pipeLine) {
+    const normalized = normalizeMultiLocation(pipeLine[0]);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+/** AI fallback when pattern matching finds no salary. Returns one concise range string or null. */
+async function extractSalaryViaAI(jobText) {
+  if (!ANTHROPIC_KEY || !jobText || jobText.length < 200) return null;
+  const systemMsg = "You extract salary/compensation from job postings. Reply with ONLY a single line: the salary or base pay range in a concise form (e.g. USD 152,100 – USD 238,525 or $120k – $150k). If there are multiple zones or ranges, give the overall range (lowest to highest). If no salary/compensation is mentioned, reply with exactly: NULL";
+  const userMsg = `Extract the salary or base pay range from this job posting. Reply with only the range (one line) or NULL.\n\n${jobText.slice(0, 8000)}`;
+  try {
+    const text = await handleClaudeProxy({ userMsg, systemMsg, useWebSearch: false });
+    const trimmed = (text || "").trim().toUpperCase();
+    if (!trimmed || trimmed === "NULL" || trimmed.startsWith("NO ") || trimmed.length > 100) return null;
+    return (text || "").trim();
+  } catch (_) {
     return null;
   }
 }
@@ -894,6 +1001,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/clear-caches" && (req.method === "DELETE" || req.method === "POST")) {
+      const key = getScoutKey(req);
+      if (!key) {
+        send(res, 401, { error: "Scout key required" });
+        return;
+      }
+      await ensureDataDir();
+      await fs.writeFile(BRAND_COLORS_FILE, "{}", "utf8");
+      await fs.writeFile(COMPANY_RESEARCH_FILE, "{}", "utf8");
+      send(res, 200, { cleared: ["brand_colors", "company_research"] });
+      return;
+    }
+
+    if (path === "/api/company-research-cache" && (req.method === "DELETE" || req.method === "POST")) {
+      const key = getScoutKey(req);
+      if (!key) {
+        send(res, 401, { error: "Scout key required" });
+        return;
+      }
+      await ensureDataDir();
+      await fs.writeFile(COMPANY_RESEARCH_FILE, "{}", "utf8");
+      send(res, 200, { cleared: true });
+      return;
+    }
+
     if (path === "/api/company-research" && req.method === "GET") {
       const key = getScoutKey(req);
       if (!key) {
@@ -905,9 +1037,10 @@ const server = http.createServer(async (req, res) => {
         send(res, 400, { error: "companyName required" });
         return;
       }
+      const refresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
       const cacheKey = normalizeCompanyKey(companyName);
       const cache = await readCompanyResearch();
-      if (cache[cacheKey]) {
+      if (!refresh && cache[cacheKey]) {
         send(res, 200, cache[cacheKey]);
         return;
       }
