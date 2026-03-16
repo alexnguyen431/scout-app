@@ -75,9 +75,11 @@ function normalizeKey(key) {
   return isValidScoutKey(k) ? k.toLowerCase() : null;
 }
 function getScoutKey(req) {
-  const keyHeader = req.headers["x-scout-key"];
+  const headers = req.headers || {};
+  const get = (name) => (typeof headers.get === "function" ? headers.get(name) : headers[name] || headers[name.toLowerCase()]);
+  const keyHeader = get("x-scout-key") || get("X-Scout-Key");
   if (keyHeader) { const k = normalizeKey(keyHeader); if (k) return k; }
-  const auth = req.headers.authorization;
+  const auth = get("authorization") || get("Authorization");
   if (auth && auth.startsWith("Bearer ")) { const k = normalizeKey(auth.slice(7)); if (k) return k; }
   return null;
 }
@@ -452,14 +454,17 @@ function send(res, status, data) {
   res.status(status).json(data);
 }
 
-function parseBody(req) {
+async function parseBody(req) {
+  const b = req.body;
+  if (b !== undefined && b !== null) {
+    if (typeof b === "object" && !Buffer.isBuffer(b)) return b;
+    if (typeof b === "string") { try { return JSON.parse(b); } catch { return {}; } }
+    return {};
+  }
+  if (typeof req.json === "function") {
+    try { return await req.json(); } catch { return {}; }
+  }
   return new Promise((resolve) => {
-    const b = req.body;
-    if (b !== undefined && b !== null) {
-      if (typeof b === "object" && !Buffer.isBuffer(b)) { resolve(b); return; }
-      if (typeof b === "string") { try { resolve(JSON.parse(b)); } catch { resolve({}); } return; }
-      resolve({}); return;
-    }
     let buf = "";
     req.on("data", (ch) => { buf += typeof ch === "string" ? ch : (ch?.toString?.() ?? ""); });
     req.on("end", () => { try { resolve(buf ? JSON.parse(buf) : {}); } catch { resolve({}); } });
@@ -522,7 +527,7 @@ export default async function handler(req, res) {
       if (req.method === "POST") {
         const body = await parseBody(req);
         const email = body?.email && typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
-        if (!email) return send(res, 400, { error: "Email required" });
+        if (!email) return send(res, 400, { error: body && typeof body === "object" && Object.keys(body).length > 0 ? "Email required" : "Request body missing or invalid" });
         let ws = await getOrCreateWorkspace(key);
         if (ws.email && ws.email !== email) await getRedis().del(`ws-email:${ws.email}`);
         ws.email = email;

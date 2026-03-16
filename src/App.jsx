@@ -1392,17 +1392,20 @@ export default function App() {
         headers: { "Content-Type": "application/json", ...getScoutHeaders() },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json().catch(() => ({}));
+      const raw = await res.text();
+      let data = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch {}
       if (res.ok) {
         setWorkspaceEmail(email);
         setRecoveryEmailInput("");
         setRecoveryEmailEditing(false);
         setToast("Recovery email saved.");
       } else {
-        setToast(data?.error || "Failed to save recovery email");
+        const msg = data?.error || (res.status === 401 ? "Scout key missing or invalid" : res.status === 400 ? "Email required" : `Failed to save (${res.status})`);
+        setToast(msg);
       }
-    } catch (_) {
-      setToast("Failed to save recovery email");
+    } catch (e) {
+      setToast(e?.message || "Network error — check connection");
     }
     setRecoveryEmailSaving(false);
   };
