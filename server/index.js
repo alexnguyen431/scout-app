@@ -371,6 +371,26 @@ async function handleJobProxy(ats, company, jobId) {
 const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const MAX_BODY = 2 * 1024 * 1024; // 2 MB
 
+async function fetchScrapeWithTimeout(url, signal) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    redirect: "follow",
+    signal,
+  });
+  if (!res.ok) throw new Error(`Page returned ${res.status}`);
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("text/html") && !contentType.includes("application/xhtml")) {
+    throw new Error("Not an HTML page");
+  }
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > MAX_BODY) throw new Error("Page too large");
+  return new TextDecoder("utf-8").decode(buf);
+}
+
 async function handleScrape(targetUrl, source = null) {
   const parsed = new URL(targetUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -378,33 +398,25 @@ async function handleScrape(targetUrl, source = null) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
-  let res;
+  let html;
   try {
-    res = await fetch(targetUrl, {
-      headers: {
-        "User-Agent": BROWSER_UA,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const jk = parsed.searchParams.get("jk");
+    const isIndeed = (parsed.hostname || "").toLowerCase().includes("indeed");
+    if (isIndeed && jk) {
+      const embeddedUrl = `${parsed.origin}${parsed.pathname}?viewtype=embedded&jk=${jk}`;
+      try {
+        html = await fetchScrapeWithTimeout(embeddedUrl, controller.signal);
+      } catch (_) {
+        html = await fetchScrapeWithTimeout(targetUrl, controller.signal);
+      }
+    } else {
+      html = await fetchScrapeWithTimeout(targetUrl, controller.signal);
+    }
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) throw new Error(`Page returned ${res.status}`);
-
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("text/html") && !contentType.includes("application/xhtml")) {
-    throw new Error("Not an HTML page");
-  }
-
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BODY) throw new Error("Page too large");
-  const html = new TextDecoder("utf-8").decode(buf);
 
   const result = extractFromHtml(html, targetUrl, source);
   // AI fallback for salary when pattern matching found nothing
@@ -415,6 +427,20 @@ async function handleScrape(targetUrl, source = null) {
     } catch (_) {}
   }
   return result;
+}
+
+function extractIndeedFromScripts(html) {
+  const out = { title: null, companyName: null, description: null };
+  const str = typeof html !== "string" ? "" : html;
+  const jsonStr = (s) => (s && s.length > 1 && s.length < 500) ? s.replace(/\\u0026/g, "&").replace(/\\\//g, "/").trim() : null;
+  const descStr = (s) => (s && s.length > 20 && s.length < 15000) ? s.replace(/\\n/g, "\n").replace(/\\u0026/g, "&").replace(/\\\//g, "/").trim() : null;
+  const mTitle = str.match(/"jobTitle"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*[,}\s]/i) || str.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*[,}\s]/i);
+  if (mTitle) out.title = jsonStr(mTitle[1]);
+  const mCompany = str.match(/"companyName"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*[,}\s]/i) || str.match(/"employerName"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*[,}\s]/i) || str.match(/"company"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*[,}\s]/i);
+  if (mCompany) out.companyName = jsonStr(mCompany[1]);
+  const mDesc = str.match(/"description"\s*:\s*"((?:[^"\\]|\\.){20,8000}?)"\s*[,}\s]/i) || str.match(/"jobDescription"\s*:\s*"((?:[^"\\]|\\.){20,8000}?)"\s*[,}\s]/i) || str.match(/"snippet"\s*:\s*"((?:[^"\\]|\\.){20,2000}?)"\s*[,}\s]/i);
+  if (mDesc) out.description = descStr(mDesc[1]);
+  return out;
 }
 
 function parseNaukriSlug(pathname) {
@@ -517,6 +543,12 @@ function extractFromHtml(html, sourceUrl, sourceHint = null) {
       title = dashMatch[1].trim();
       if (!companyName) companyName = dashMatch[2].trim();
     } else if (raw) title = raw;
+  }
+  if (source === "indeed") {
+    const scriptData = extractIndeedFromScripts(html);
+    if (scriptData.title && scriptData.title.length < 200) title = title || scriptData.title;
+    if (scriptData.companyName && scriptData.companyName.length < 200) companyName = companyName || scriptData.companyName;
+    if (scriptData.description) content = content.trim().length >= 100 ? content : scriptData.description;
   }
   if (source === "naukri" && (ogTitle || titleTag) && !jsonLd?.title) {
     const raw = (ogTitle || titleTag || "").replace(/\s*\|\s*Naukri\.com\s*.*$/i, "").trim();
