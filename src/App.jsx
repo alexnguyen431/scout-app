@@ -233,28 +233,6 @@ const SEED_JOBS = [
   },
 ];
 
-async function callClaude(userMsg, systemMsg, useWebSearch = false) {
-  const res = await fetch((API_BASE || "") + "/api/claude", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userMsg, systemMsg, useWebSearch }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-  return data.text ?? "";
-}
-
-const AI_CLEANUP_SYSTEM = `You are a job posting data extractor. You will receive partially-extracted job data and the raw scraped text. Fill in missing fields and fix weak ones. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
-{"title":"job title or null if not found","companyName":"company name or null","location":"location or null","salary":"salary/compensation range as a short string, or null if truly not mentioned","requirements":["requirement 1","requirement 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do NOT describe the company or use intros like 'We are...'. Plain text."}
-Rules:
-- If a field already has a good value, return that same value unchanged.
-- For salary: look for compensation, pay range, base salary, OTE, or equity. Format concisely (e.g. "$120k – $180k").
-- For requirements: return 3-8 concise bullet points. If already good, keep them.
-- For summary: ALWAYS write a 2-3 sentence role summary from the job text. Describe what the person will do in this role, not the company. If the provided summary is generic or company-focused, replace it. Never leave summary empty when the job text describes the role.
-- NEVER fabricate data. If info is truly not in the text, return null.`;
-
 /** Set to true to skip AI API calls for company research (companies page + auto-research on new company). */
 const PAUSE_COMPANY_AI = false;
 
@@ -1693,9 +1671,9 @@ export default function App() {
 
       if (!rawText) {
         try {
-          const scrapeParams = new URLSearchParams({ url: jobLink });
+          const scrapeParams = new URLSearchParams({ url: jobLink, aiCleanup: "1" });
           if (ats && (ats.ats === "indeed" || ats.ats === "naukri")) scrapeParams.set("source", ats.ats);
-          const res = await fetch((API_BASE || "") + `/api/scrape?${scrapeParams.toString()}`);
+          const res = await fetch((API_BASE || "") + `/api/scrape?${scrapeParams.toString()}`, { headers: getScoutHeaders() });
           const data = await res.json();
           if (res.ok && data.content) {
             rawText = data.content;
@@ -1706,6 +1684,24 @@ export default function App() {
               companyName: data.companyName || prefill.companyName,
               salary: data.salary || null,
             };
+            if (data.aiCleaned && typeof data.aiCleaned === "object") {
+              const ac = data.aiCleaned;
+              const parsed = {
+                title: ac.title ?? prefill.title ?? null,
+                companyName: ac.companyName ?? prefill.companyName ?? null,
+                location: ac.location ?? prefill.location ?? "Remote",
+                salary: ac.salary ?? prefill.salary ?? null,
+                summary: ac.summary ?? null,
+                requirements: Array.isArray(ac.requirements) ? ac.requirements : [],
+                niceToHave: Array.isArray(ac.niceToHave) ? ac.niceToHave : [],
+                _aiAssisted: true,
+                _aiFields: ["title", "companyName", "location", "salary", "summary", "requirements"].filter((k) => ac[k] != null && ac[k] !== ""),
+              };
+              setJobData(parsed);
+              setImportStep(null);
+              setLoading(false);
+              return;
+            }
           }
         } catch (_) {}
       }
@@ -1723,52 +1719,6 @@ export default function App() {
 
       if (rawText) {
         const parsed = extractJobFree(rawText, prefill, jsonLd);
-
-        const hasFullJsonLd = jsonLd && jsonLd.title && jsonLd.salary && jsonLd.location;
-        const titleWeak = !parsed.title || parsed.title.length > 60 || /[|–—]/.test(parsed.title);
-        const summaryFallback = parsed.summary === "Job posting imported. See link for full details.";
-        const summaryGeneric = !summaryFallback && parsed.summary && (
-          parsed.summary.length < 50 ||
-          /^(?:we are|we're|at\s+[a-z]+,?\s+we|join (?:our|us)|our (?:mission|team|company)|[A-Za-z]+\s+is\s+(?:a|an)\s+)/i.test(parsed.summary.trim())
-        );
-        const needsAI = !hasFullJsonLd && (
-          !parsed.salary
-          || titleWeak
-          || summaryFallback
-          || summaryGeneric
-          || (parsed.requirements.length === 1 && parsed.requirements[0] === "See job description")
-        );
-
-        if (needsAI) {
-          setImportStep("ai");
-          try {
-            const already = { title: parsed.title, companyName: parsed.companyName, location: parsed.location, salary: parsed.salary, summary: parsed.summary };
-            const aiText = await callClaude(
-              `Scraped job posting. Fill in missing fields and improve weak ones. Current extracted: ${JSON.stringify(already)}\n\nIf the current summary is missing or sounds like company intro (e.g. "We are..."), write a 2-3 sentence summary of THE ROLE: what the candidate will do, scope, impact.\n\nJob text:\n${rawText.slice(0, 6000)}`,
-              AI_CLEANUP_SYSTEM
-            );
-            const aiData = JSON.parse(aiText.replace(/```json|```/g, "").trim());
-            const aiFields = [];
-            if (!parsed.salary && aiData.salary) { parsed.salary = aiData.salary; aiFields.push("salary"); }
-            if (titleWeak && aiData.title && aiData.title.length <= 80) { parsed.title = aiData.title; aiFields.push("title"); }
-            if (!parsed.companyName && aiData.companyName) { parsed.companyName = aiData.companyName; aiFields.push("company"); }
-            if (!parsed.location || parsed.location === "Remote") {
-              if (aiData.location && aiData.location !== "null") { parsed.location = aiData.location; aiFields.push("location"); }
-            }
-            if (aiData.summary && (summaryFallback || summaryGeneric || !parsed.summary)) {
-              parsed.summary = aiData.summary;
-              aiFields.push("summary");
-            }
-            if (parsed.requirements.length === 1 && parsed.requirements[0] === "See job description" && aiData.requirements?.length) {
-              parsed.requirements = aiData.requirements; aiFields.push("requirements");
-            }
-            if (aiFields.length > 0) {
-              parsed._aiAssisted = true;
-              parsed._aiFields = aiFields;
-            }
-          } catch (_) {}
-        }
-
         setJobData(parsed);
       } else {
         setFetchError("failed");
@@ -1784,12 +1734,14 @@ export default function App() {
     if (!sourceText?.trim()) return;
     setLoading(true);
     try {
-      const text = await callClaude(
-        `Extract info from this job description:\n\n${sourceText.slice(0, 6000)}`,
-        `You are a job description parser. Return ONLY raw JSON (no markdown, no backticks):
-{"title":"job title","companyName":"company name if mentioned, else null","location":"location or Remote","salary":"salary range or null","requirements":["key requirement 1","key requirement 2","key requirement 3"],"niceToHave":["nice 1","nice 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do not describe the company or use intros like 'We are...'. Plain text."}`
-      );
-      setJobData(JSON.parse(text.replace(/```json|```/g, "").trim()));
+      const res = await fetch((API_BASE || "") + "/api/refine-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getScoutHeaders() },
+        body: JSON.stringify({ pastedText: sourceText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.jobData) setJobData(data.jobData);
     } catch (e) { console.error(e); setFetchError(e.message || "AI refinement failed"); }
     setLoading(false);
   };

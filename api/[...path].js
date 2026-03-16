@@ -84,6 +84,26 @@ function getScoutKey(req) {
   return null;
 }
 
+function getAllowedOrigins() {
+  const raw = process.env.ALLOWED_ORIGINS || "";
+  if (raw.trim()) return raw.split(",").map((o) => o.trim().toLowerCase()).filter(Boolean);
+  const base = ["https://scoutboard.xyz", "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"];
+  const vercel = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+  return vercel ? [vercel, ...base] : base;
+}
+function isAllowedOrigin(req) {
+  const origins = getAllowedOrigins();
+  const headers = req.headers || {};
+  const get = (n) => (typeof headers.get === "function" ? headers.get(n) : headers[n] || headers[n?.toLowerCase()]);
+  const origin = get("origin") || get("Origin");
+  const referer = get("referer") || get("Referer");
+  const originHost = origin ? (() => { try { return new URL(origin).origin.toLowerCase(); } catch (_) { return ""; } })() : "";
+  const refererOrigin = referer ? (() => { try { return new URL(referer).origin.toLowerCase(); } catch (_) { return ""; } })() : "";
+  if (originHost && origins.some((o) => o === originHost)) return true;
+  if (refererOrigin && origins.some((o) => o === refererOrigin)) return true;
+  return origins.length === 0;
+}
+
 const ANTHROPIC_KEY = process.env.VITE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
 
 const KNOWN_BRAND_COLORS_SERVER = {
@@ -290,6 +310,32 @@ async function extractSalaryViaAI(jobText) {
     const trimmed = (text || "").trim().toUpperCase();
     if (!trimmed || trimmed === "NULL" || trimmed.startsWith("NO ") || trimmed.length > 100) return null;
     return (text || "").trim();
+  } catch (_) { return null; }
+}
+
+const AI_CLEANUP_SYSTEM = `You are a job posting data extractor. You will receive partially-extracted job data and the raw scraped text. Fill in missing fields and fix weak ones. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
+{"title":"job title or null if not found","companyName":"company name or null","location":"location or null","salary":"salary/compensation range as a short string, or null if truly not mentioned","requirements":["requirement 1","requirement 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do NOT describe the company or use intros like 'We are...'. Plain text."}
+Rules:
+- If a field already has a good value, return that same value unchanged.
+- For salary: look for compensation, pay range, base salary, OTE, or equity. Format concisely (e.g. "$120k – $180k").
+- For requirements: return 3-8 concise bullet points. If already good, keep them.
+- For summary: ALWAYS write a 2-3 sentence role summary from the job text. Describe what the person will do in this role, not the company. If the provided summary is generic or company-focused, replace it. Never leave summary empty when the job text describes the role.
+- NEVER fabricate data. If info is truly not in the text, return null.`;
+
+async function jobCleanupViaAI(scrapeResult) {
+  if (!ANTHROPIC_KEY || !scrapeResult?.content) return null;
+  const already = {
+    title: scrapeResult.title || null,
+    companyName: scrapeResult.companyName || null,
+    location: scrapeResult.location || null,
+    salary: scrapeResult.salary || null,
+    summary: null,
+  };
+  const userMsg = `Scraped job posting. Fill in missing fields and improve weak ones. Current extracted: ${JSON.stringify(already)}\n\nIf the current summary is missing or sounds like company intro (e.g. "We are..."), write a 2-3 sentence summary of THE ROLE: what the candidate will do, scope, impact.\n\nJob text:\n${(scrapeResult.content || "").slice(0, 6000)}`;
+  try {
+    const text = await handleClaudeProxy({ userMsg, systemMsg: AI_CLEANUP_SYSTEM, useWebSearch: false });
+    const cleaned = (text || "").replace(/```json|```/g, "").trim();
+    return JSON.parse(cleaned);
   } catch (_) { return null; }
 }
 
@@ -712,12 +758,21 @@ export default async function handler(req, res) {
       return send(res, 200, result);
     }
 
-    // ---- Scrape ----
+    // ---- Scrape (requires Scout key; no scrape no claude) ----
     if (pathStr === "/api/scrape" && req.method === "GET") {
+      const key = getScoutKey(req);
+      if (!key) return send(res, 401, { error: "Scout key required" });
       const targetUrl = url.searchParams.get("url");
       if (!targetUrl) return send(res, 400, { error: "Missing url parameter" });
       const source = url.searchParams.get("source") || null;
+      const aiCleanup = url.searchParams.get("aiCleanup") === "1" || url.searchParams.get("aiCleanup") === "true";
       const result = await handleScrape(targetUrl, source);
+      if (aiCleanup && result.content && result.content.length > 100) {
+        try {
+          const aiCleaned = await jobCleanupViaAI(result);
+          if (aiCleaned) result.aiCleaned = aiCleaned;
+        } catch (_) {}
+      }
       return send(res, 200, result);
     }
 
@@ -767,11 +822,35 @@ export default async function handler(req, res) {
       return send(res, 200, data || { name: companyName, description: "", size: "", stage: "", designTeamSize: "", designLeaders: "", culture: "", website: "" });
     }
 
-    // ---- Claude proxy ----
-    if (pathStr === "/api/claude" && req.method === "POST") {
+    // ---- Refine job (pasted text only; no generic Claude proxy) ----
+    if (pathStr === "/api/refine-job" && req.method === "POST") {
+      const key = getScoutKey(req);
+      if (!key) return send(res, 401, { error: "Scout key required" });
+      if (!isAllowedOrigin(req)) return send(res, 403, { error: "Request must come from app origin" });
       const body = await parseBody(req);
-      const text = await handleClaudeProxy(body);
-      return send(res, 200, { text });
+      const pastedText = (body.pastedText || body.pasted_text || "").trim();
+      if (!pastedText) return send(res, 400, { error: "pastedText required" });
+      const REFINE_SYSTEM = `You are a job description parser. Return ONLY raw JSON (no markdown, no backticks):
+{"title":"job title","companyName":"company name if mentioned, else null","location":"location or Remote","salary":"salary range or null","requirements":["key requirement 1","key requirement 2","key requirement 3"],"niceToHave":["nice 1","nice 2"],"summary":"2-3 sentence summary of THE ROLE ONLY: what the candidate will do, key scope, and impact. Do not describe the company or use intros like 'We are...'. Plain text."}`;
+      try {
+        const text = await handleClaudeProxy({
+          userMsg: `Extract info from this job description:\n\n${pastedText.slice(0, 6000)}`,
+          systemMsg: REFINE_SYSTEM,
+          useWebSearch: false,
+        });
+        const parsed = JSON.parse((text || "").replace(/```json|```/g, "").trim());
+        return send(res, 200, { jobData: parsed });
+      } catch (e) {
+        return send(res, 500, { error: e.message || "AI refinement failed" });
+      }
+    }
+
+    // ---- Claude proxy disabled: use /api/scrape?aiCleanup=1 or /api/refine-job ----
+    if (pathStr === "/api/claude" && req.method === "POST") {
+      if (!isAllowedOrigin(req)) return send(res, 403, { error: "Request must come from app origin" });
+      const key = getScoutKey(req);
+      if (!key) return send(res, 401, { error: "Scout key required" });
+      return send(res, 403, { error: "Direct Claude access disabled. Use /api/scrape with aiCleanup=1 or /api/refine-job." });
     }
 
     return send(res, 404, { error: "Not found" });
