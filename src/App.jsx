@@ -992,7 +992,7 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
               <button type="button" onClick={() => handleClose(false)} style={{ background: "none", border: "none", color: T.textSec, cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1 }} aria-label="Close">×</button>
             </div>
         <p style={{ fontSize: 13, color: T.textSec, marginBottom: 20, lineHeight: 1.5, textAlign: "left" }}>
-          {message || "Every job board is keyed to a unique ID. No email signup and password needed — pick an option below."}
+          {message || "Every Scout board created is keyed to a unique ID. No email and password signup needed — pick an option below."}
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
           <div>
@@ -1012,7 +1012,7 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
                 style={{ ...css.input, flex: 1 }}
                 onKeyDown={(e) => e.key === "Enter" && restoreKey()}
               />
-              <button type="button" style={css.btn("sec")} onClick={restoreKey}>Restore</button>
+              <button type="button" style={css.btn("primary")} onClick={restoreKey}>Restore</button>
             </div>
             {pasteError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{pasteError}</div>}
           </div>
