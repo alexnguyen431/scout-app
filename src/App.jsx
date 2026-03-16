@@ -659,6 +659,28 @@ function detectATS(url) {
   } catch { return null; }
 }
 
+/** Parse Naukri URL path to get title, company, location when scrape fails or returns empty. */
+function parseNaukriSlugFromUrl(url) {
+  try {
+    const pathname = new URL(url).pathname;
+    if (!pathname || !pathname.includes("job-listings")) return null;
+    let slug = pathname.replace(/^\/job-listings-?/i, "").trim();
+    slug = slug.replace(/-\d+-to-\d+-years-\d+$/i, "").replace(/-\d+$/, "");
+    const parts = slug.split("-").filter(Boolean);
+    if (parts.length < 3) return null;
+    const location = parts[parts.length - 1];
+    const company = parts[parts.length - 2];
+    const titleParts = parts.slice(0, -2);
+    return {
+      title: titleParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" "),
+      companyName: company.charAt(0).toUpperCase() + company.slice(1).toLowerCase(),
+      location: location.charAt(0).toUpperCase() + location.slice(1).toLowerCase(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 function timeAgo(iso) {
@@ -1672,6 +1694,17 @@ export default function App() {
             };
           }
         } catch (_) {}
+      }
+      if (!rawText && ats?.ats === "naukri") {
+        const slug = parseNaukriSlugFromUrl(jobLink);
+        if (slug?.title) {
+          prefill = { title: slug.title, companyName: slug.companyName || null, location: slug.location || null, salary: null };
+          rawText = "Job listing on Naukri. See link for full details.";
+        }
+      }
+      if (!rawText && ats?.ats === "indeed") {
+        prefill = { title: "Job from Indeed", companyName: null, location: null, salary: null };
+        rawText = "Job listing on Indeed. See link for full details.";
       }
 
       if (rawText) {

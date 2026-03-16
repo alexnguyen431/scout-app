@@ -376,6 +376,22 @@ async function handleScrape(targetUrl, source = null) {
   return result;
 }
 
+function parseNaukriSlug(pathname) {
+  if (!pathname || typeof pathname !== "string" || !pathname.includes("job-listings")) return null;
+  let slug = pathname.replace(/^\/job-listings-?/i, "").trim();
+  slug = slug.replace(/-\d+-to-\d+-years-\d+$/i, "").replace(/-\d+$/, "");
+  const parts = slug.split("-").filter(Boolean);
+  if (parts.length < 3) return null;
+  const location = parts[parts.length - 1];
+  const company = parts[parts.length - 2];
+  const titleParts = parts.slice(0, -2);
+  return {
+    title: titleParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" "),
+    companyName: company.charAt(0).toUpperCase() + company.slice(1).toLowerCase(),
+    location: location.charAt(0).toUpperCase() + location.slice(1).toLowerCase(),
+  };
+}
+
 function extractFromHtml(html, sourceUrl, sourceHint = null) {
   let host = "";
   try { host = new URL(sourceUrl).hostname.toLowerCase(); } catch (_) {}
@@ -430,6 +446,17 @@ function extractFromHtml(html, sourceUrl, sourceHint = null) {
     const dashMatch = raw.match(/^(.+?)\s+[-–—]\s+(.+?)$/);
     if (dashMatch) { title = dashMatch[1].trim(); if (!companyName) companyName = dashMatch[2].trim(); }
     else if (raw) title = raw;
+  }
+  if (source === "naukri") {
+    try {
+      const pathname = new URL(sourceUrl).pathname;
+      const slug = parseNaukriSlug(pathname);
+      if (slug) {
+        if (!title) title = slug.title;
+        if (!companyName) companyName = slug.companyName;
+        if (!location) location = slug.location;
+      }
+    } catch (_) {}
   }
 
   try { if (host === "apply.workable.com" && metaSubdomain) companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase(); } catch (_) {}
