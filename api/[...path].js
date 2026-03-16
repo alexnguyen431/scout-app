@@ -477,7 +477,11 @@ async function parseBody(req) {
 // ---------------------------------------------------------------------------
 export default async function handler(req, res) {
   const url = new URL(req.url || "/", `https://${req.headers.host || "localhost"}`);
-  const pathStr = (url.pathname || "/").replace(/\/$/, "") || "/";
+  let pathStr = (url.pathname || "/").replace(/\/$/, "") || "/";
+  const query = req.query || {};
+  const pathSegments = query.path ?? query.slug;
+  if (Array.isArray(pathSegments) && pathSegments.length > 0) pathStr = "/api/" + pathSegments.join("/");
+  else if (!pathStr.startsWith("/api")) pathStr = "/api" + (pathStr.startsWith("/") ? pathStr : "/" + pathStr);
 
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
