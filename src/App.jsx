@@ -1392,13 +1392,18 @@ export default function App() {
         headers: { "Content-Type": "application/json", ...getScoutHeaders() },
         body: JSON.stringify({ email }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setWorkspaceEmail(email);
         setRecoveryEmailInput("");
         setRecoveryEmailEditing(false);
         setToast("Recovery email saved.");
+      } else {
+        setToast(data?.error || "Failed to save recovery email");
       }
-    } catch (_) {}
+    } catch (_) {
+      setToast("Failed to save recovery email");
+    }
     setRecoveryEmailSaving(false);
   };
 

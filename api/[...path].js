@@ -7,10 +7,10 @@ import crypto from "crypto";
 let redis;
 function getRedis() {
   if (!redis) {
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
+    redis = new Redis({ url, token });
   }
   return redis;
 }
@@ -454,9 +454,14 @@ function send(res, status, data) {
 
 function parseBody(req) {
   return new Promise((resolve) => {
-    if (req.body) { resolve(req.body); return; }
+    const b = req.body;
+    if (b !== undefined && b !== null) {
+      if (typeof b === "object" && !Buffer.isBuffer(b)) { resolve(b); return; }
+      if (typeof b === "string") { try { resolve(JSON.parse(b)); } catch { resolve({}); } return; }
+      resolve({}); return;
+    }
     let buf = "";
-    req.on("data", ch => (buf += ch));
+    req.on("data", (ch) => { buf += typeof ch === "string" ? ch : (ch?.toString?.() ?? ""); });
     req.on("end", () => { try { resolve(buf ? JSON.parse(buf) : {}); } catch { resolve({}); } });
     req.on("error", () => resolve({}));
   });
