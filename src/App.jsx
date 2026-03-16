@@ -334,7 +334,19 @@ function extractJobFree(rawText, prefill = {}, jsonLd = null) {
       .filter((p) => p.length > 2 && p.length < 120);
     return parts.length > 0 ? parts.join(" / ") : null;
   }
+  function extractStripeLocationFromText(t) {
+    if (!t || typeof t !== "string") return null;
+    const officeMatch = t.match(/Office\s+locations?\s*[\r\n]+\s*([A-Za-z][^\r\n]{0,80})/i);
+    const remoteMatch = t.match(/Remote\s+locations?\s*[\r\n]+\s*([A-Za-z][^\r\n]{0,80})/i);
+    const officeLoc = officeMatch ? officeMatch[1].trim() : null;
+    const remoteLoc = remoteMatch ? remoteMatch[1].trim() : null;
+    if (remoteLoc && officeLoc) return `${remoteLoc} and/or ${officeLoc}`;
+    if (remoteLoc) return remoteLoc;
+    if (officeLoc) return officeLoc;
+    return null;
+  }
   let location = prefill.location?.trim() || jsonLd?.location || null;
+  if (!location && /Office\s+locations?/i.test(text)) location = extractStripeLocationFromText(text);
   if (!location) {
     // Full line after "location:" or "locations:" (may contain | or ; separated list)
     const locLineMatch = text.match(/(?:^|\n)\s*(?:location|locations|office)\s*:?\s*([^\n]+)/im);

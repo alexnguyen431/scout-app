@@ -209,6 +209,19 @@ function extractLocationFromText(text) {
   return null;
 }
 
+/** Stripe jobs list "Office locations" and "Remote locations" on separate lines; combine as "Remote X and/or City". */
+function extractStripeLocationFromText(text) {
+  if (!text || typeof text !== "string") return null;
+  const officeMatch = text.match(/Office\s+locations?\s*[\r\n]+\s*([A-Za-z][^\r\n]{0,80})/i);
+  const remoteMatch = text.match(/Remote\s+locations?\s*[\r\n]+\s*([A-Za-z][^\r\n]{0,80})/i);
+  const officeLoc = officeMatch ? officeMatch[1].trim() : null;
+  const remoteLoc = remoteMatch ? remoteMatch[1].trim() : null;
+  if (remoteLoc && officeLoc) return `${remoteLoc} and/or ${officeLoc}`;
+  if (remoteLoc) return remoteLoc;
+  if (officeLoc) return officeLoc;
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Claude proxy
 // ---------------------------------------------------------------------------
@@ -495,7 +508,9 @@ function extractFromHtml(html, sourceUrl, sourceHint = null) {
   }
 
   try { if (host === "apply.workable.com" && metaSubdomain) companyName = metaSubdomain.charAt(0).toUpperCase() + metaSubdomain.slice(1).toLowerCase(); } catch (_) {}
-  let location = jsonLd?.location || extractLocationFromText(content) || null;
+  let location = jsonLd?.location || null;
+  if (!location && host.includes("stripe.com") && (content || "").includes("Office locations")) location = extractStripeLocationFromText(content) || extractStripeLocationFromText(html);
+  if (!location) location = extractLocationFromText(content) || null;
   if (!location && source === "naukri") {
     try {
       const slug = parseNaukriSlug(new URL(sourceUrl).pathname);
@@ -509,6 +524,7 @@ function extractFromHtml(html, sourceUrl, sourceHint = null) {
   if (/<[a-z][\s\S]*>/i.test(finalContent)) finalContent = stripHtml(finalContent);
   finalContent = finalContent.slice(0, 15000).trim();
   if (!location) location = extractLocationFromText(finalContent) || null;
+  if (!location && host.includes("stripe.com")) location = extractStripeLocationFromText(finalContent) || null;
   if (!salary) salary = extractSalaryFromText(finalContent) || null;
   return { title: title ? decodeHtmlEntities(title) : null, companyName: companyName ? decodeHtmlEntities(companyName) : null, location, salary, content: finalContent, jsonLd };
 }
