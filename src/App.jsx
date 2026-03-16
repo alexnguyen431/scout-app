@@ -2542,8 +2542,8 @@ export default function App() {
               const tableMinWidth = TABLE_COLUMNS.reduce((s, c) => s + getColumnWidth(c.id), 0);
               return (
                 <div style={{ overflow: "auto" }}>
-                  <div style={{ position: "relative", display: "inline-block", minWidth: "100%" }}>
-                    <table style={{ width: "100%", minWidth: tableMinWidth, borderCollapse: "collapse", tableLayout: "auto" }}>
+                  <div style={{ position: "relative", display: "inline-block", minWidth: "100%", width: "max-content", maxWidth: "100%" }}>
+                    <table style={{ width: tableMinWidth, minWidth: tableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
                     <colgroup>
                       {TABLE_COLUMNS.map((c) => <col key={c.id} style={{ width: getColumnWidth(c.id) }} />)}
                     </colgroup>
