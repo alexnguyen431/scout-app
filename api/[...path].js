@@ -93,6 +93,7 @@ const KNOWN_BRAND_COLORS_SERVER = {
   "stripe.com": "#635BFF", "figma.com": "#F24E1E",
   "linear.app": "#5E6AD2", "notion.so": "#000000",
   "instacart.com": "#43B02A", "via.transport": "#00C2FF",
+  "doordash.com": "#FF3008", doordash: "#FF3008",
 };
 
 function normalizeDomain(website) {

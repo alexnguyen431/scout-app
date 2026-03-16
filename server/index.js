@@ -84,6 +84,8 @@ const KNOWN_BRAND_COLORS_SERVER = {
   kraken: "#5741D9",
   "thumbtack.com": "#009FD9",
   thumbtack: "#009FD9",
+  "doordash.com": "#FF3008",
+  doordash: "#FF3008",
 };
 
 async function readBrandColors() {

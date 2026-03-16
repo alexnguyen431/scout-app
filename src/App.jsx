@@ -769,12 +769,14 @@ const KNOWN_BRAND_COLORS = {
   "zynga.com": "#E91D26",
   "kraken.com": "#5741D9",
   "thumbtack.com": "#009FD9",
+  "doordash.com": "#FF3008",
 };
 /** Known brand colors by company name (when domain is missing). Lowercase, no spaces. */
 const KNOWN_BRAND_COLORS_BY_NAME = {
   zynga: "#E91D26",
   kraken: "#5741D9",
   thumbtack: "#009FD9",
+  doordash: "#FF3008",
 };
 
 function normalizeDomain(website) {
@@ -1913,16 +1915,19 @@ export default function App() {
 
   const getCompany = id => companies.find(c => c.id === id);
   const BRAND_COLOR_LOADING_GREY = "#6b7280";
+  /** When no cached/Claude brand color: use black instead of hash-from-name palette. */
+  const BRAND_COLOR_FALLBACK = "#1a1a1a";
+  /** Brand color order: 1) cached/known, 2) Claude via API (stored for next time), 3) fallback black. */
   const getCompanyColorForDisplay = (company) => {
     if (!company) return getCompanyColor(null);
     const domain = normalizeDomain(company.website);
     if (domain && KNOWN_BRAND_COLORS[domain]) return KNOWN_BRAND_COLORS[domain];
     const cacheKey = domain || (company.name || "").toLowerCase().replace(/\s+/g, "");
-    if (!cacheKey) return getCompanyColor(company.name);
+    if (!cacheKey) return BRAND_COLOR_FALLBACK;
     if (!domain && KNOWN_BRAND_COLORS_BY_NAME[cacheKey]) return KNOWN_BRAND_COLORS_BY_NAME[cacheKey];
     if (brandColorsByDomain[cacheKey] !== undefined) {
       const hex = brandColorsByDomain[cacheKey];
-      return hex || getCompanyColor(company.name);
+      return hex || BRAND_COLOR_FALLBACK;
     }
     return BRAND_COLOR_LOADING_GREY;
   };
