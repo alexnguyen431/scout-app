@@ -889,8 +889,6 @@ function getCss(T, isDark) {
   };
 }
 
-const THEME_KEY = "scout-theme";
-
 function Toast({ message, theme }) {
   const T = THEMES[theme];
   if (!message) return null;
@@ -1089,7 +1087,10 @@ function RecoverPage({ theme, onKeyRestored }) {
 }
 
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || "dark");
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+    return "light";
+  });
   const [key, setKey] = useState(getStoredKey);
   const [dataLoading, setDataLoading] = useState(!!getStoredKey());
   const [view, setView] = useState("board");
@@ -1452,7 +1453,6 @@ export default function App() {
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    localStorage.setItem(THEME_KEY, next);
   };
 
   // Add Company
@@ -2582,6 +2582,22 @@ export default function App() {
                 {job.location && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.location}</span>}
                 {job.salary && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.salary}</span>}
               </div>
+              {job.contact && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, display: "flex", alignItems: "center", gap: 5, letterSpacing: "-0.01em" }}>
+                  <span style={{ fontSize: 10, opacity: 0.6 }}>●</span> {job.contact}
+                </div>
+              )}
+              {(() => {
+                const noteList = getNotesList(job);
+                if (noteList.length === 0) return null;
+                const latest = noteList[noteList.length - 1];
+                return (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em" }}>
+                    {latest.text.slice(0, 60)}{latest.text.length > 60 ? "…" : ""}
+                    {noteList.length > 1 && <span style={{ opacity: 0.8, fontWeight: 500 }}> · {noteList.length} notes</span>}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
