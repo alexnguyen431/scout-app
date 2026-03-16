@@ -2021,7 +2021,7 @@ export default function App() {
               <button type="button" onClick={() => setHeaderMenuOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 10, border: "none", background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", color: T.text, cursor: "pointer" }} aria-label="Menu">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
               </button>
-              <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
+              <a href="/" style={{ textDecoration: "none", color: "inherit" }}><div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div></a>
               <div style={{ flex: 1, minWidth: 0 }} />
               <button style={{ ...css.btn("primary"), flexShrink: 0 }} onClick={() => { setModal("addJob"); setHeaderMenuOpen(false); }}>+ Add Job</button>
               {headerMenuOpen && (
@@ -2087,7 +2087,7 @@ export default function App() {
             <>
               <div className="scout-header-left" style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div>
+                  <a href="/" style={{ textDecoration: "none", color: "inherit" }}><div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div></a>
                   <div style={{ ...css.headerTitle, color: T.textMuted }}>{view === "board" ? "Board" : "Companies"}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: T.textSec, fontWeight: 500 }}>
