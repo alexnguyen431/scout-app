@@ -10,6 +10,9 @@ const FEEDBACK_BANNER_STORAGE = "scout-feedback-banner-dismissed";
 /** Delay before showing the feedback banner so the main UI paints first */
 const FEEDBACK_BANNER_DELAY_MS = 2000;
 
+const MOBILE_MENU_MS = 380;
+const MOBILE_MENU_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+
 const SCOUT_KEY_REGEX = /^scout_[a-z0-9]{8}$/i;
 function isValidScoutKey(key) {
   return typeof key === "string" && SCOUT_KEY_REGEX.test(key.trim());
@@ -1208,6 +1211,9 @@ export default function App() {
   const [keyModalMessage, setKeyModalMessage] = useState(null);
   const [keyMenuOpen, setKeyMenuOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [headerMenuSlideIn, setHeaderMenuSlideIn] = useState(false);
+  const pendingAfterMobileMenuCloseRef = useRef(null);
+  const [mobileMenuReducedMotion, setMobileMenuReducedMotion] = useState(false);
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false);
   useEffect(() => {
     const mql = window.matchMedia("(max-width: 640px)");
@@ -1215,6 +1221,30 @@ export default function App() {
     mql.addEventListener("change", fn);
     return () => mql.removeEventListener("change", fn);
   }, []);
+  useEffect(() => {
+    try {
+      const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const fn = () => setMobileMenuReducedMotion(mql.matches);
+      fn();
+      mql.addEventListener("change", fn);
+      return () => mql.removeEventListener("change", fn);
+    } catch (_) {
+      return undefined;
+    }
+  }, []);
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    pendingAfterMobileMenuCloseRef.current = null;
+    if (mobileMenuReducedMotion) {
+      setHeaderMenuSlideIn(true);
+      return;
+    }
+    setHeaderMenuSlideIn(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setHeaderMenuSlideIn(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [headerMenuOpen, mobileMenuReducedMotion]);
   const [toast, setToast] = useState(null);
   const pendingImportAfterKeyRef = useRef(null);
   const [workspaceEmail, setWorkspaceEmail] = useState(null);
@@ -1337,6 +1367,34 @@ export default function App() {
       setFeedbackSubmitting(false);
     }
   }, [feedbackMessage, feedbackName, feedbackEmail, feedbackHoneypot, closeFeedbackModal]);
+
+  const mobileMenuTransitionMs = mobileMenuReducedMotion ? 0 : MOBILE_MENU_MS;
+
+  const requestCloseMobileMenu = useCallback((afterClose) => {
+    if (!headerMenuOpen) {
+      if (typeof afterClose === "function") afterClose();
+      return;
+    }
+    pendingAfterMobileMenuCloseRef.current = afterClose || null;
+    if (mobileMenuReducedMotion) {
+      setHeaderMenuOpen(false);
+      const fn = pendingAfterMobileMenuCloseRef.current;
+      pendingAfterMobileMenuCloseRef.current = null;
+      if (typeof fn === "function") fn();
+      return;
+    }
+    setHeaderMenuSlideIn(false);
+  }, [headerMenuOpen, mobileMenuReducedMotion]);
+
+  const onMobileMenuDrawerTransitionEnd = useCallback((e) => {
+    if (e.propertyName !== "transform") return;
+    if (headerMenuSlideIn) return;
+    if (!headerMenuOpen) return;
+    setHeaderMenuOpen(false);
+    const fn = pendingAfterMobileMenuCloseRef.current;
+    pendingAfterMobileMenuCloseRef.current = null;
+    if (typeof fn === "function") fn();
+  }, [headerMenuSlideIn, headerMenuOpen]);
 
   const T = THEMES[theme];
   const isDark = theme === "dark";
@@ -2214,14 +2272,44 @@ export default function App() {
               </button>
               <a href="/" style={{ textDecoration: "none", color: "inherit" }}><div style={css.logo}>Scout<span style={{ color: T.accent, fontSize: 8, marginLeft: 2, marginBottom: 8, lineHeight: 1 }}>●</span></div></a>
               <div style={{ flex: 1, minWidth: 0 }} />
-              <button style={{ ...css.btn("primary"), flexShrink: 0 }} onClick={() => { setModal("addJob"); setHeaderMenuOpen(false); }}>+ Add Job</button>
+              <button style={{ ...css.btn("primary"), flexShrink: 0 }} onClick={() => requestCloseMobileMenu(() => setModal("addJob"))}>+ Add Job</button>
               {headerMenuOpen && (
                 <>
-                  <div style={{ position: "fixed", inset: 0, zIndex: 99, background: "rgba(0,0,0,0.4)" }} onClick={() => setHeaderMenuOpen(false)} aria-hidden="true" />
-                  <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(300px, 85vw)", maxWidth: "100%", background: T.surface, borderLeft: `1px solid ${T.border}`, zIndex: 100, overflow: "auto", padding: "20px 16px", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)" }}>
+                  <div
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 99,
+                      background: "rgba(0,0,0,0.4)",
+                      opacity: headerMenuSlideIn ? 1 : 0,
+                      transition: `opacity ${mobileMenuTransitionMs}ms ${MOBILE_MENU_EASE}`,
+                      pointerEvents: headerMenuSlideIn ? "auto" : "none",
+                    }}
+                    onClick={() => requestCloseMobileMenu()}
+                    aria-hidden="true"
+                  />
+                  <div
+                    onTransitionEnd={onMobileMenuDrawerTransitionEnd}
+                    style={{
+                      position: "fixed",
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      width: "min(300px, 85vw)",
+                      maxWidth: "100%",
+                      background: T.surface,
+                      borderRight: `1px solid ${T.border}`,
+                      zIndex: 100,
+                      overflow: "auto",
+                      padding: "20px 16px",
+                      boxShadow: "4px 0 24px rgba(0,0,0,0.15)",
+                      transform: headerMenuSlideIn ? "translateX(0)" : "translateX(-100%)",
+                      transition: `transform ${mobileMenuTransitionMs}ms ${MOBILE_MENU_EASE}`,
+                    }}
+                  >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                       <span style={{ ...css.headerTitle, color: T.text }}>Menu</span>
-                      <button type="button" onClick={() => setHeaderMenuOpen(false)} style={{ background: "none", border: "none", fontSize: 22, color: T.textMuted, cursor: "pointer", padding: 4 }} aria-label="Close">×</button>
+                      <button type="button" onClick={() => requestCloseMobileMenu()} style={{ background: "none", border: "none", fontSize: 22, color: T.textMuted, cursor: "pointer", padding: 4 }} aria-label="Close">×</button>
                     </div>
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 4 }}>{view === "board" ? "Board" : "Companies"}</div>
@@ -2230,7 +2318,7 @@ export default function App() {
                         <span><span style={{ color: T.textMuted, marginRight: 4 }}>Active</span><strong style={{ color: T.accent }}>{totalActive}</strong></span>
                       </div>
                     </div>
-                    <button style={{ ...css.btn("primary"), width: "100%", marginBottom: 20 }} onClick={() => { setModal("addJob"); setHeaderMenuOpen(false); }}>+ Add Job</button>
+                    <button style={{ ...css.btn("primary"), width: "100%", marginBottom: 20 }} onClick={() => requestCloseMobileMenu(() => setModal("addJob"))}>+ Add Job</button>
                     <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 16 }}>
                       <div style={css.label}>Account</div>
                       {key ? (
@@ -2239,7 +2327,7 @@ export default function App() {
                             <div style={css.label}>Access key</div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                               <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
-                              <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setHeaderMenuOpen(false); }}>Copy</button>
+                              <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => requestCloseMobileMenu(() => copyWithToast(key))}>Copy</button>
                             </div>
                             <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
                           </div>
@@ -2249,7 +2337,7 @@ export default function App() {
                               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                                 <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, wordBreak: "break-all" }}>{workspaceEmail}</span>
                                 <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
-                                <button type="button" onClick={() => { removeRecoveryEmail(); setHeaderMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
+                                <button type="button" onClick={() => requestCloseMobileMenu(() => removeRecoveryEmail())} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
                               </div>
                             ) : (
                               <>
@@ -2261,10 +2349,10 @@ export default function App() {
                               </>
                             )}
                           </div>
-                          <button type="button" onClick={() => { handleLogout(); setHeaderMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
+                          <button type="button" onClick={() => requestCloseMobileMenu(() => handleLogout())} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
                         </>
                       ) : (
-                        <button type="button" style={{ ...css.btn("sec"), width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => { setKeyModalMessage(null); setShowKeyModal(true); setHeaderMenuOpen(false); }}>
+                        <button type="button" style={{ ...css.btn("sec"), width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => requestCloseMobileMenu(() => { setKeyModalMessage(null); setShowKeyModal(true); })}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
                           Sign up / Log in
                         </button>
