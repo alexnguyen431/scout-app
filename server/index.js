@@ -202,13 +202,23 @@ function getAllowedOrigins() {
 }
 function isAllowedOrigin(req) {
   const origins = getAllowedOrigins();
-  const origin = req.headers.origin || req.headers.referer;
-  if (!origin) return true;
+  const oh = req.headers.origin;
+  const ref = req.headers.referer;
   let originHost = "";
-  try {
-    originHost = new URL(origin).origin.toLowerCase();
-  } catch (_) {}
-  return origins.some((o) => o === originHost);
+  let refererOrigin = "";
+  if (oh && typeof oh === "string") {
+    try {
+      originHost = new URL(oh).origin.toLowerCase();
+    } catch (_) {}
+  }
+  if (ref && typeof ref === "string") {
+    try {
+      refererOrigin = new URL(ref).origin.toLowerCase();
+    } catch (_) {}
+  }
+  if (originHost && origins.some((o) => o === originHost)) return true;
+  if (refererOrigin && origins.some((o) => o === refererOrigin)) return true;
+  return false;
 }
 const ANTHROPIC_KEY = process.env.VITE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
 
@@ -917,6 +927,69 @@ function parseBody(req) {
   });
 }
 
+function getClientIpNode(req) {
+  const xf = req.headers["x-forwarded-for"];
+  if (xf && typeof xf === "string") {
+    const first = xf.split(",")[0].trim();
+    if (first) return first.slice(0, 128);
+  }
+  const real = req.headers["x-real-ip"];
+  if (real && typeof real === "string") return real.trim().slice(0, 128);
+  return req.socket?.remoteAddress || "unknown";
+}
+function ipForRateLimitKey(ip) {
+  return String(ip || "unknown").replace(/[^a-zA-Z0-9.:_-]/g, "_").slice(0, 200);
+}
+function escapeHtmlFeedback(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+const FEEDBACK_MSG_MAX = 4000;
+const FEEDBACK_MSG_MIN = 10;
+const FEEDBACK_NAME_MAX = 200;
+const FEEDBACK_RATE_ANON_PER_HOUR = 5;
+const FEEDBACK_RATE_ANON_PER_DAY = 20;
+const FEEDBACK_RATE_KEY_PER_HOUR = 12;
+const FEEDBACK_RATE_WINDOW_MS = 3600 * 1000;
+const FEEDBACK_DAY_WINDOW_MS = 86400 * 1000;
+const feedbackDay24ByIp = new Map();
+const feedbackHourByIp = new Map();
+const feedbackHourByScout = new Map();
+function checkFeedbackDay24Local(ipKey) {
+  const now = Date.now();
+  let rec = feedbackDay24ByIp.get(ipKey);
+  if (!rec || now > rec.reset) {
+    rec = { count: 0, reset: now + FEEDBACK_DAY_WINDOW_MS };
+  }
+  rec.count += 1;
+  feedbackDay24ByIp.set(ipKey, rec);
+  return rec.count <= FEEDBACK_RATE_ANON_PER_DAY;
+}
+function checkFeedbackHourIpLocal(ipKey) {
+  const now = Date.now();
+  let rec = feedbackHourByIp.get(ipKey);
+  if (!rec || now > rec.reset) {
+    rec = { count: 0, reset: now + FEEDBACK_RATE_WINDOW_MS };
+  }
+  rec.count += 1;
+  feedbackHourByIp.set(ipKey, rec);
+  return rec.count <= FEEDBACK_RATE_ANON_PER_HOUR;
+}
+function checkFeedbackHourScoutLocal(scoutKey) {
+  const now = Date.now();
+  let rec = feedbackHourByScout.get(scoutKey);
+  if (!rec || now > rec.reset) {
+    rec = { count: 0, reset: now + FEEDBACK_RATE_WINDOW_MS };
+  }
+  rec.count += 1;
+  feedbackHourByScout.set(scoutKey, rec);
+  return rec.count <= FEEDBACK_RATE_KEY_PER_HOUR;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
   const path = (url.pathname || "/").replace(/\/$/, "") || "/";
@@ -937,6 +1010,84 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, { ok: true, port: PORT });
       return;
     }
+
+    if (path === "/api/feedback" && req.method === "POST") {
+      if (!isAllowedOrigin(req)) {
+        send(res, 403, { error: "Forbidden" });
+        return;
+      }
+      const body = await parseBody(req);
+      const honeypot = body?.companyWebsite;
+      if (typeof honeypot === "string" && honeypot.trim() !== "") {
+        send(res, 200, { ok: true });
+        return;
+      }
+      const message = typeof body?.message === "string" ? body.message.trim() : "";
+      if (!message) {
+        send(res, 400, { error: "Message required" });
+        return;
+      }
+      if (message.length < FEEDBACK_MSG_MIN) {
+        send(res, 400, { error: "Message too short" });
+        return;
+      }
+      if (message.length > FEEDBACK_MSG_MAX) {
+        send(res, 400, { error: "Message too long" });
+        return;
+      }
+      const name = typeof body?.name === "string" ? body.name.trim().slice(0, FEEDBACK_NAME_MAX) : "";
+      const fromEmail = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (fromEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+        send(res, 400, { error: "Invalid email" });
+        return;
+      }
+      const toEmail = process.env.FEEDBACK_TO_EMAIL;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!toEmail || !apiKey) {
+        send(res, 503, { error: "Feedback is not available right now" });
+        return;
+      }
+      const ip = ipForRateLimitKey(getClientIpNode(req));
+      const scoutKey = getScoutKey(req);
+      if (!checkFeedbackDay24Local(ip)) {
+        send(res, 429, { error: "Too many submissions. Try again tomorrow." });
+        return;
+      }
+      const hourOk = scoutKey ? checkFeedbackHourScoutLocal(scoutKey) : checkFeedbackHourIpLocal(ip);
+      if (!hourOk) {
+        send(res, 429, { error: "Too many submissions. Try again later." });
+        return;
+      }
+      const preview = message.replace(/\s+/g, " ").slice(0, 80);
+      const subject = `[Scout feedback] ${preview}${message.length > 80 ? "…" : ""}`;
+      const htmlParts = [
+        "<p><strong>Scout product feedback</strong></p>",
+        name ? `<p><strong>Name:</strong> ${escapeHtmlFeedback(name)}</p>` : "",
+        fromEmail ? `<p><strong>Reply-to:</strong> ${escapeHtmlFeedback(fromEmail)}</p>` : "",
+        `<p><strong>Message:</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtmlFeedback(message)}</pre>`,
+        `<p style="color:#888;font-size:12px">IP: ${escapeHtmlFeedback(ip)}</p>`,
+      ];
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || "Scout <onboarding@resend.dev>",
+          to: [toEmail],
+          subject,
+          html: htmlParts.join(""),
+          ...(fromEmail ? { reply_to: fromEmail } : {}),
+        }),
+      });
+      if (!resendRes.ok) {
+        const errText = await resendRes.text().catch(() => "");
+        console.error("Feedback Resend error:", resendRes.status, errText);
+        send(res, 502, { error: "Could not send feedback" });
+        return;
+      }
+      send(res, 200, { ok: true });
+      return;
+    }
+
     if (path === "/api/data" && (req.method === "GET" || req.method === "POST")) {
       let key = getScoutKey(req);
       let body = null;

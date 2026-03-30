@@ -600,6 +600,40 @@ function extractCompanyFromUrl(url) {
   try { const host = new URL(url).hostname.replace("www.", "").replace("jobs.", "").replace("careers.", ""); return host.split(".")[0].charAt(0).toUpperCase() + host.split(".")[0].slice(1); } catch { return null; }
 }
 
+function getClientIp(req) {
+  const headers = req.headers || {};
+  const get = (n) => (typeof headers.get === "function" ? headers.get(n) : headers[n] || headers[n?.toLowerCase()]);
+  const xf = get("x-forwarded-for") || get("X-Forwarded-For");
+  if (xf && typeof xf === "string") {
+    const first = xf.split(",")[0].trim();
+    if (first) return first.slice(0, 128);
+  }
+  const real = get("x-real-ip") || get("X-Real-Ip");
+  if (real && typeof real === "string") return real.trim().slice(0, 128);
+  return "unknown";
+}
+function ipForRateLimitKey(ip) {
+  return String(ip || "unknown").replace(/[^a-zA-Z0-9.:_-]/g, "_").slice(0, 200);
+}
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+const FEEDBACK_MSG_MAX = 4000;
+const FEEDBACK_MSG_MIN = 10;
+const FEEDBACK_NAME_MAX = 200;
+/** Anonymous: per-IP hourly + rolling 24h caps */
+const FEEDBACK_RATE_ANON_PER_HOUR = 5;
+const FEEDBACK_RATE_ANON_PER_DAY = 20;
+/** Logged-in (valid Scout key): per-key hourly cap */
+const FEEDBACK_RATE_KEY_PER_HOUR = 12;
+const FEEDBACK_RATE_WINDOW_SEC = 3600;
+const FEEDBACK_DAY_WINDOW_SEC = 86400;
+
 // ---------------------------------------------------------------------------
 // Response helpers
 // ---------------------------------------------------------------------------
@@ -648,6 +682,80 @@ export default async function handler(req, res) {
   try {
     // ---- Health ----
     if (pathStr === "/api/health") {
+      return send(res, 200, { ok: true });
+    }
+
+    // ---- Feedback (public; email recipient server-only) ----
+    if (pathStr === "/api/feedback" && req.method === "POST") {
+      if (!isAllowedOrigin(req)) {
+        return send(res, 403, { error: "Forbidden" });
+      }
+      const body = await parseBody(req);
+      const honeypot = body?.companyWebsite;
+      if (typeof honeypot === "string" && honeypot.trim() !== "") {
+        return send(res, 200, { ok: true });
+      }
+      const message = typeof body?.message === "string" ? body.message.trim() : "";
+      if (!message) return send(res, 400, { error: "Message required" });
+      if (message.length < FEEDBACK_MSG_MIN) return send(res, 400, { error: "Message too short" });
+      if (message.length > FEEDBACK_MSG_MAX) return send(res, 400, { error: "Message too long" });
+      let name = typeof body?.name === "string" ? body.name.trim().slice(0, FEEDBACK_NAME_MAX) : "";
+      let fromEmail = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (fromEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+        return send(res, 400, { error: "Invalid email" });
+      }
+      const toEmail = process.env.FEEDBACK_TO_EMAIL;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!toEmail || !apiKey) {
+        return send(res, 503, { error: "Feedback is not available right now" });
+      }
+      const ip = ipForRateLimitKey(getClientIp(req));
+      const scoutKey = getScoutKey(req);
+      try {
+        const dayKey = `feedback:day24:ip:${ip}`;
+        const dayN = Number(await getRedis().incr(dayKey));
+        if (dayN === 1) await getRedis().expire(dayKey, FEEDBACK_DAY_WINDOW_SEC);
+        if (dayN > FEEDBACK_RATE_ANON_PER_DAY) {
+          return send(res, 429, { error: "Too many submissions. Try again tomorrow." });
+        }
+        const hourKey = scoutKey
+          ? `feedback:hr:scout:${scoutKey}`
+          : `feedback:hr:ip:${ip}`;
+        const hourMax = scoutKey ? FEEDBACK_RATE_KEY_PER_HOUR : FEEDBACK_RATE_ANON_PER_HOUR;
+        const hourN = Number(await getRedis().incr(hourKey));
+        if (hourN === 1) await getRedis().expire(hourKey, FEEDBACK_RATE_WINDOW_SEC);
+        if (hourN > hourMax) {
+          return send(res, 429, { error: "Too many submissions. Try again later." });
+        }
+      } catch (e) {
+        console.error("Feedback rate limit:", e);
+        return send(res, 503, { error: "Feedback is not available right now" });
+      }
+      const preview = message.replace(/\s+/g, " ").slice(0, 80);
+      const subject = `[Scout feedback] ${preview}${message.length > 80 ? "…" : ""}`;
+      const htmlParts = [
+        "<p><strong>Scout product feedback</strong></p>",
+        name ? `<p><strong>Name:</strong> ${escapeHtml(name)}</p>` : "",
+        fromEmail ? `<p><strong>Reply-to:</strong> ${escapeHtml(fromEmail)}</p>` : "",
+        `<p><strong>Message:</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(message)}</pre>`,
+        `<p style="color:#888;font-size:12px">IP: ${escapeHtml(ip)}</p>`,
+      ];
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || "Scout <onboarding@resend.dev>",
+          to: [toEmail],
+          subject,
+          html: htmlParts.join(""),
+          ...(fromEmail ? { reply_to: [fromEmail] } : {}),
+        }),
+      });
+      if (!resendRes.ok) {
+        const errText = await resendRes.text().catch(() => "");
+        console.error("Feedback Resend error:", resendRes.status, errText);
+        return send(res, 502, { error: "Could not send feedback" });
+      }
       return send(res, 200, { ok: true });
     }
 

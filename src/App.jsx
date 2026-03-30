@@ -6,6 +6,10 @@ const API_BASE = (import.meta.env.VITE_API_URL ?? "")
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
 
+const FEEDBACK_BANNER_STORAGE = "scout-feedback-banner-dismissed";
+/** Delay before showing the feedback banner so the main UI paints first */
+const FEEDBACK_BANNER_DELAY_MS = 2000;
+
 const SCOUT_KEY_REGEX = /^scout_[a-z0-9]{8}$/i;
 function isValidScoutKey(key) {
   return typeof key === "string" && SCOUT_KEY_REGEX.test(key.trim());
@@ -1183,7 +1187,23 @@ export default function App() {
   const [view, setView] = useState("board");
   const [companies, setCompanies] = useState([]);
   const [jobs, setJobs] = useState([]);
-  const [modal, setModal] = useState(null); // "addCo" | "addJob" | "job"
+  const [modal, setModal] = useState(null); // "addCo" | "addJob" | "job" | "feedback"
+  const [feedbackBannerDismissed, setFeedbackBannerDismissed] = useState(() => {
+    try {
+      return typeof localStorage !== "undefined" && localStorage.getItem(FEEDBACK_BANNER_STORAGE) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [feedbackBannerReady, setFeedbackBannerReady] = useState(false);
+  const [feedbackName, setFeedbackName] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackHoneypot, setFeedbackHoneypot] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(null);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const feedbackCloseTimerRef = useRef(null);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyModalMessage, setKeyModalMessage] = useState(null);
   const [keyMenuOpen, setKeyMenuOpen] = useState(false);
@@ -1237,6 +1257,86 @@ export default function App() {
   const [kanbanSortByColumn, setKanbanSortByColumn] = useState({}); // { [statusId]: { column: string, dir: 'asc'|'desc' } }
   const [jobDetailMenuOpen, setJobDetailMenuOpen] = useState(false);
   const [brandColorsByDomain, setBrandColorsByDomain] = useState({});
+
+  useEffect(() => () => {
+    if (feedbackCloseTimerRef.current) clearTimeout(feedbackCloseTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (feedbackBannerDismissed) return;
+    const t = setTimeout(() => setFeedbackBannerReady(true), FEEDBACK_BANNER_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [feedbackBannerDismissed]);
+
+  const dismissFeedbackBanner = useCallback(() => {
+    setFeedbackBannerDismissed(true);
+    try {
+      localStorage.setItem(FEEDBACK_BANNER_STORAGE, "1");
+    } catch (_) {}
+  }, []);
+
+  const resetFeedbackForm = useCallback(() => {
+    if (feedbackCloseTimerRef.current) {
+      clearTimeout(feedbackCloseTimerRef.current);
+      feedbackCloseTimerRef.current = null;
+    }
+    setFeedbackName("");
+    setFeedbackEmail("");
+    setFeedbackMessage("");
+    setFeedbackHoneypot("");
+    setFeedbackError(null);
+    setFeedbackSuccess(false);
+    setFeedbackSubmitting(false);
+  }, []);
+
+  const openFeedbackModal = useCallback(() => {
+    resetFeedbackForm();
+    setModal("feedback");
+  }, [resetFeedbackForm]);
+
+  const closeFeedbackModal = useCallback(() => {
+    resetFeedbackForm();
+    setModal(null);
+  }, [resetFeedbackForm]);
+
+  const submitFeedback = useCallback(async (e) => {
+    e.preventDefault();
+    const msg = feedbackMessage.trim();
+    if (!msg) {
+      setFeedbackError("Please enter a message.");
+      return;
+    }
+    if (msg.length < 10) {
+      setFeedbackError("Please write at least a few words (10+ characters).");
+      return;
+    }
+    setFeedbackSubmitting(true);
+    setFeedbackError(null);
+    try {
+      const res = await fetch((API_BASE || "") + "/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getScoutHeaders() },
+        body: JSON.stringify({
+          message: msg,
+          name: feedbackName.trim() || undefined,
+          email: feedbackEmail.trim() || undefined,
+          companyWebsite: feedbackHoneypot,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setFeedbackSuccess(true);
+      if (feedbackCloseTimerRef.current) clearTimeout(feedbackCloseTimerRef.current);
+      feedbackCloseTimerRef.current = setTimeout(() => {
+        feedbackCloseTimerRef.current = null;
+        closeFeedbackModal();
+      }, 10000);
+    } catch (err) {
+      setFeedbackError(err.message || "Something went wrong");
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }, [feedbackMessage, feedbackName, feedbackEmail, feedbackHoneypot, closeFeedbackModal]);
 
   const T = THEMES[theme];
   const isDark = theme === "dark";
@@ -1595,13 +1695,15 @@ export default function App() {
         setEditing(null);
         setModal(null);
         setJobDetailMenuOpen(false);
+      } else if (modal === "feedback") {
+        closeFeedbackModal();
       } else {
         setModal(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [modal]);
+  }, [modal, closeFeedbackModal]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -2017,6 +2119,16 @@ export default function App() {
         .job-summary-html p:last-child{margin-bottom:0}
         .job-summary-html strong{font-weight:600}
         [data-dragging="true"],[data-dragging="true"] *{cursor:grabbing !important}
+        @keyframes scoutFeedbackBannerIn {
+          from { opacity: 0; transform: translate3d(0, -12px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+        .scout-feedback-banner {
+          animation: scoutFeedbackBannerIn 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .scout-feedback-banner { animation: none; opacity: 1; transform: none; }
+        }
         @media (max-width: 640px) {
           .scout-header { padding: 12px 16px; gap: 10px; }
           .scout-header-left { gap: 12px; }
@@ -2036,6 +2148,64 @@ export default function App() {
 
       {/* Main */}
       <div style={css.main}>
+        {feedbackBannerReady && !feedbackBannerDismissed && (
+          <div
+            className="scout-feedback-banner"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 20px",
+              borderBottom: `1px solid ${T.border}`,
+              borderLeft: `3px solid ${T.accent}`,
+              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+              flexShrink: 0,
+              flexWrap: "wrap",
+              transformOrigin: "top center",
+            }}
+          >
+            <p style={{ flex: 1, margin: 0, fontSize: 13.5, color: T.textSec, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
+              <span style={{ color: T.text, fontWeight: 600 }}>We’d love your input.</span>{" "}
+              Open call for product feedback and suggestions — help shape Scout.
+            </p>
+            <button
+              type="button"
+              onClick={openFeedbackModal}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: T.accent,
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+                fontFamily: FONT_TEXT,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Share feedback
+            </button>
+            <button
+              type="button"
+              onClick={dismissFeedbackBanner}
+              aria-label="Dismiss feedback banner"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px 8px",
+                fontSize: 22,
+                lineHeight: 1,
+                color: T.textMuted,
+                flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div className="scout-header" style={css.header}>
           {isMobile ? (
             <>
@@ -2848,6 +3018,60 @@ export default function App() {
           </div>
         );
       })()}
+
+      {/* Feedback modal */}
+      {modal === "feedback" && (
+        <div className="scout-overlay" style={css.overlay} onClick={e => e.target === e.currentTarget && closeFeedbackModal()}>
+          <div className="scout-modal" style={css.modal} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: feedbackSuccess ? 12 : 22 }}>
+              <div style={{ ...css.modalTitle, marginBottom: 0 }}>{feedbackSuccess ? "Thank you" : "Send feedback"}</div>
+              <button type="button" onClick={closeFeedbackModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
+            </div>
+            {feedbackSuccess ? (
+              <p style={{ fontSize: 14, color: T.textSec, lineHeight: 1.55, margin: 0 }}>
+                Your message was sent. This window will close in a few seconds.
+              </p>
+            ) : (
+              <form onSubmit={submitFeedback}>
+                <p style={{ fontSize: 13, color: T.textSec, marginBottom: 18, lineHeight: 1.5 }}>
+                  Share ideas, bugs, or what you’d like to see next. Name and email are optional — include an email if you’d like a reply.
+                </p>
+                <div style={{ position: "absolute", left: -9999, width: 1, height: 1, overflow: "hidden" }} aria-hidden>
+                  <label htmlFor="feedback-company-website">Company website</label>
+                  <input
+                    id="feedback-company-website"
+                    name="companyWebsite"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={feedbackHoneypot}
+                    onChange={(e) => setFeedbackHoneypot(e.target.value)}
+                  />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={css.label} htmlFor="feedback-name">Name (optional)</label>
+                  <input id="feedback-name" style={css.input} value={feedbackName} onChange={(e) => setFeedbackName(e.target.value)} placeholder="Your name" />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={css.label} htmlFor="feedback-email">Email (optional)</label>
+                  <input id="feedback-email" type="email" style={css.input} value={feedbackEmail} onChange={(e) => setFeedbackEmail(e.target.value)} placeholder="you@example.com" />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={css.label} htmlFor="feedback-message">Message</label>
+                  <textarea id="feedback-message" style={css.textarea} value={feedbackMessage} onChange={(e) => setFeedbackMessage(e.target.value)} placeholder="What’s on your mind?" rows={5} />
+                </div>
+                {feedbackError && (
+                  <div style={{ fontSize: 13, color: "#f87171", marginBottom: 12 }}>{feedbackError}</div>
+                )}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button type="submit" style={css.btn("primary")} disabled={feedbackSubmitting}>
+                    {feedbackSubmitting ? "Sending…" : "Send feedback"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add Company Modal */}
       {modal === "addCo" && (
