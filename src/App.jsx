@@ -2332,9 +2332,8 @@ export default function App() {
   };
   const [boardSearch, setBoardSearch] = useState("");
   const [journalSearch, setJournalSearch] = useState("");
-  const [journalStageFilter, setJournalStageFilter] = useState("all"); // all | interested | applied | interviewing | offer | rejected | compare
+  const [journalStageFilter, setJournalStageFilter] = useState("all"); // all | interested | applied | interviewing | offer | rejected
   const [journalCompanyFilter, setJournalCompanyFilter] = useState(""); // companyId
-  const [journalCompareCompanyIds, setJournalCompareCompanyIds] = useState([]); // 2-4 companyIds
   const [priorityFilter, setPriorityFilter] = useState(""); // "" | "high" | "medium" | "low"
   const [sortBy, setSortBy] = useState("priority"); // "priority" | "date" | "company"
 
@@ -2414,6 +2413,7 @@ export default function App() {
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${T.textMuted};border-radius:4px}
+        .scout-journal-stage-tabs::-webkit-scrollbar{display:none}
         button:disabled{opacity:0.4;cursor:not-allowed}
         select option{background:${T.surface};color:${T.text}}
         table{border-spacing:0}
@@ -3267,12 +3267,11 @@ export default function App() {
                 ["interviewing", "Interviewing"],
                 ["offer", "Offer"],
                 ["rejected", "Rejected"],
-                ["compare", "Compare"],
               ];
 
               const q = journalSearch.trim().toLowerCase();
               const filtered = allJournalEntries.filter(({ note, company }) => {
-                if (journalStageFilter !== "all" && journalStageFilter !== "compare" && (note.stage || "").toLowerCase() !== journalStageFilter) return false;
+                if (journalStageFilter !== "all" && (note.stage || "").toLowerCase() !== journalStageFilter) return false;
                 if (journalCompanyFilter && (company?.id || "") !== journalCompanyFilter) return false;
                 if (q) {
                   const coName = (company?.name || "").toLowerCase();
@@ -3282,15 +3281,19 @@ export default function App() {
                 return true;
               });
 
-              const pill = (active) => ({
-                ...css.btn("sec"),
-                padding: "6px 10px",
-                fontSize: 12,
-                borderRadius: 999,
-                borderColor: active ? T.accent : T.border,
-                color: active ? T.accent : T.textSec,
-                background: active ? `${T.accent}14` : T.surface,
-              });
+              const pill = (id, active) => {
+                const sid = (id || "").toLowerCase();
+                const col = sid && sid !== "all" ? (getStatusMeta(sid)?.color || T.accent) : T.accent;
+                return {
+                  ...css.btn("sec"),
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  borderRadius: 999,
+                  borderColor: active ? col : T.border,
+                  color: active ? col : T.textSec,
+                  background: active ? `${col}14` : T.surface,
+                };
+              };
 
               const companyOptions = companies
                 .slice()
@@ -3301,22 +3304,29 @@ export default function App() {
                 <div style={{ flex: 1, padding: "18px 20px 84px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
                     <div
+                      className="scout-journal-stage-tabs"
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
-                        flexWrap: "wrap",
-                        padding: 4,
-                        borderRadius: 14,
-                        background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-                        border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`,
+                        flexWrap: "nowrap",
+                        padding: 0,
+                        borderRadius: 0,
+                        background: "transparent",
+                        border: "none",
+                        overflowX: "auto",
+                        overflowY: "hidden",
+                        WebkitOverflowScrolling: "touch",
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                        maxWidth: "100%",
                       }}
                     >
                       {stageTabs.map(([id, label]) => (
-                        <button key={id} type="button" onClick={() => setJournalStageFilter(id)} style={{ ...pill(journalStageFilter === id), padding: "6px 9px" }}>{label}</button>
+                        <button key={id} type="button" onClick={() => setJournalStageFilter(id)} style={{ ...pill(id, journalStageFilter === id), padding: "6px 9px", flexShrink: 0 }}>{label}</button>
                       ))}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
                       {import.meta.env.DEV && (
                         <button
                           type="button"
@@ -3327,73 +3337,53 @@ export default function App() {
                           Seed demo notes
                         </button>
                       )}
-                      <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Company</span>
-                      <select value={journalCompanyFilter} onChange={(e) => setJournalCompanyFilter(e.target.value)} style={{ ...css.select, height: 34, fontSize: 12, padding: "0 10px", borderRadius: 8, minWidth: 180 }}>
-                        <option value="">All</option>
-                        {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 2, whiteSpace: "nowrap" }}>
+                        Company
+                      </span>
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <select
+                          value={journalCompanyFilter}
+                          onChange={(e) => setJournalCompanyFilter(e.target.value)}
+                          style={{
+                            ...css.select,
+                            height: 40,
+                            lineHeight: "40px",
+                            fontSize: 12.5,
+                            padding: "0 34px 0 12px",
+                            borderRadius: 12,
+                            minWidth: 220,
+                            appearance: "none",
+                            WebkitAppearance: "none",
+                            boxSizing: "border-box",
+                          }}
+                        >
+                          <option value="">All</option>
+                          {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                          <ChevronIcon down size={10} color={T.textSec} />
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {journalStageFilter === "compare" ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <div style={{ fontSize: 13, color: T.textSec, lineHeight: 1.5 }}>
-                          Select 2–4 companies to compare their notes side by side.
-                        </div>
-                        <select
-                          multiple
-                          value={journalCompareCompanyIds}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions).map(o => o.value).filter(Boolean);
-                            setJournalCompareCompanyIds(selected.slice(0, 4));
-                          }}
-                          style={{ ...css.select, minWidth: 260, height: 92, padding: 8, borderRadius: 10, fontSize: 12 }}
-                        >
-                          {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(2, Math.min(4, journalCompareCompanyIds.length || 2))}, minmax(0, 1fr))`, gap: 12 }}>
-                        {journalCompareCompanyIds.slice(0, 4).map((cid) => {
-                          const co = companies.find(c => c.id === cid);
-                          const entries = allJournalEntries.filter(e => e.company?.id === cid);
-                          const byStage = STATUSES.reduce((acc, st) => { acc[st.id] = []; return acc; }, {});
-                          for (const e of entries) byStage[(e.note.stage || "interested").toLowerCase()]?.push(e);
-                          return (
-                            <div key={cid} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, minHeight: 240 }}>
-                              <div style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 10, color: T.text }}>{co?.name || "Company"}</div>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                {STATUSES.map(st => {
-                                  const arr = byStage[st.id] || [];
-                                  if (arr.length === 0) return null;
-                                  return (
-                                    <div key={st.id}>
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: st.color }}>{st.label}</span>
-                                        <span style={{ fontSize: 11, color: T.textMuted }}>{arr.length}</span>
-                                      </div>
-                                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                        {arr.slice(0, 8).map(({ note, job }) => (
-                                          <div key={note.id} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: "8px 10px", background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)" }}>
-                                            <div style={{ fontSize: 12, color: T.text, fontWeight: 700, letterSpacing: "-0.01em" }}>{job?.title || "Role"}</div>
-                                            {!!note.text && <div style={{ marginTop: 4, fontSize: 12, color: T.textSec, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{highlight(note.text, journalSearch)}</div>}
-                                            {/* context removed */}
-                                            <div style={{ marginTop: 6, fontSize: 10.5, color: T.textMuted }}>{formatNoteTime(note.createdAt)}</div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ position: "relative", paddingLeft: 22 }}>
-                      <div style={{ position: "absolute", left: 10, top: 6, bottom: 6, width: 2, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", borderRadius: 2 }} />
+                  <div style={{ position: "relative", paddingLeft: 22 }}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 10,
+                          top: 6,
+                          bottom: 6,
+                          width: 2,
+                          borderRadius: 2,
+                          background: `linear-gradient(to bottom,
+                            ${isDark ? "rgba(255,255,255,0.00)" : "rgba(0,0,0,0.00)"} 0%,
+                            ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} 8%,
+                            ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} 92%,
+                            ${isDark ? "rgba(255,255,255,0.00)" : "rgba(0,0,0,0.00)"} 100%
+                          )`,
+                        }}
+                      />
                       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {filtered.map(({ note, job, company }) => {
                           if ((note?.type || "manual") === "stage_change") return null;
@@ -3409,7 +3399,20 @@ export default function App() {
                                 padding: "2px 0",
                               }}
                             >
-                              <div style={{ width: 16, display: "flex", justifyContent: "center" }}>
+                              <div style={{ width: 16, display: "flex", justifyContent: "center", position: "relative" }}>
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    right: "50%",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    width: 18,
+                                    height: 2,
+                                    background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                                    borderRadius: 2,
+                                    pointerEvents: "none",
+                                  }}
+                                />
                                 <div style={{ width: 10, height: 10, borderRadius: 999, background: st.color, boxShadow: isDark ? "0 0 0 4px rgba(255,255,255,0.02)" : "0 0 0 4px rgba(0,0,0,0.02)" }} />
                               </div>
                               <div
@@ -3419,7 +3422,7 @@ export default function App() {
                                   borderRadius: 14,
                                   padding: "12px 12px",
                                   cursor: "pointer",
-                                  transition: "transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
+                                  transition: "background 0.12s ease",
                                 }}
                                 role="button"
                                 tabIndex={0}
@@ -3429,16 +3432,6 @@ export default function App() {
                                     e.preventDefault();
                                     openJob(job);
                                   }
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.transform = "translateY(-1px)";
-                                  e.currentTarget.style.boxShadow = isDark ? "0 10px 26px rgba(0,0,0,0.35)" : "0 10px 26px rgba(0,0,0,0.08)";
-                                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.025)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.transform = "none";
-                                  e.currentTarget.style.boxShadow = "none";
-                                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)";
                                 }}
                               >
                                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -3474,7 +3467,6 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                  )}
                 </div>
               );
             })()}
