@@ -715,13 +715,55 @@ function formatNoteTime(iso) {
   return date.toLocaleString([], { month: "short", day: "numeric", year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined, hour: "numeric", minute: "2-digit" });
 }
 
-/** Normalize job.notes to array of { id, text, createdAt } (support legacy string) */
+function getStatusMeta(statusId) {
+  const id = (statusId || "").toLowerCase();
+  return STATUSES.find(s => s.id === id) || null;
+}
+function getStatusMetaSafe(statusId) {
+  return getStatusMeta(statusId) || STATUSES[0];
+}
+
+/** Normalize job.notes to array of note objects (support legacy shapes). */
 function getNotesList(job) {
   if (!job) return [];
+  const stageFallback = (job.status || "interested").toLowerCase();
+  const createdFallback = job.addedAt || new Date().toISOString();
   const n = job.notes;
-  if (Array.isArray(n)) return n;
-  if (typeof n === "string" && n.trim()) return [{ id: "legacy", text: n.trim(), createdAt: job.addedAt || new Date().toISOString() }];
+  if (Array.isArray(n)) {
+    return n
+      .map((note, idx) => {
+        if (!note) return null;
+        if (typeof note === "string") {
+          const t = note.trim();
+          if (!t) return null;
+          return { id: `legacy_${idx}`, text: t, stage: stageFallback, previousStage: null, createdAt: createdFallback, type: "manual", context: "" };
+        }
+        const text = typeof note.text === "string" ? note.text : "";
+        const createdAt = note.createdAt || createdFallback;
+        const stage = (note.stage || stageFallback || "interested").toLowerCase();
+        const previousStage = note.previousStage ? String(note.previousStage).toLowerCase() : null;
+        const type = note.type === "stage_change" ? "stage_change" : "manual";
+        const context = typeof note.context === "string" ? note.context : (typeof note.stageContext === "string" ? note.stageContext : "");
+        return {
+          id: note.id || `note_${idx}_${createdAt}`,
+          text,
+          stage,
+          previousStage,
+          createdAt,
+          type,
+          context,
+        };
+      })
+      .filter(Boolean);
+  }
+  if (typeof n === "string" && n.trim()) {
+    return [{ id: "legacy", text: n.trim(), stage: stageFallback, previousStage: null, createdAt: createdFallback, type: "manual", context: "" }];
+  }
   return [];
+}
+
+function getManualNotesList(job) {
+  return getNotesList(job).filter((n) => (n?.type || "manual") !== "stage_change");
 }
 
 function initials(name) {
@@ -874,9 +916,9 @@ function isColorDark(hex) {
   return luminance < 0.25;
 }
 
-// SF Pro: Display for headings (≥20pt), Text for body/UI (≤19pt). -apple-system = SF Pro on Apple.
+// SF Pro: Use Display everywhere for a punchier aesthetic. -apple-system = SF Pro on Apple.
 const FONT_DISPLAY = '"SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif';
-const FONT_TEXT = '"SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", sans-serif';
+const FONT_TEXT = FONT_DISPLAY;
 /** Set to true to show "by FUTURE-PROOF.XYZ" under the Scout logo in sidebar and modals. */
 const SHOW_LOGO_CREDIT = false;
 
@@ -957,13 +999,14 @@ function getCss(T, isDark) {
     input: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT, letterSpacing: "-0.01em" },
     textarea: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: T.text, outline: "none", resize: "vertical", minHeight: 110, fontFamily: FONT_TEXT, boxSizing: "border-box", lineHeight: 1.6, letterSpacing: "-0.01em" },
     select: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT },
-    label: { display: "block", fontSize: 12, fontWeight: 600, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10, fontFamily: FONT_TEXT },
+    label: { display: "block", fontSize: 14, fontWeight: 600, color: T.text, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 10, fontFamily: FONT_DISPLAY },
     tag: { display: "inline-flex", padding: "3px 9px", borderRadius: 6, fontSize: 12, background: T.surfaceHover, color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     pill: { display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     overlay: { position: "fixed", inset: 0, background: T.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
     modal: {
-      background: T.surface,
-      border: `1px solid ${T.border}`,
+      background: isDark ? T.surface : "rgba(255, 255, 255, 1)",
+      border: "1px solid rgba(0, 0, 0, 0)",
+      borderImage: "none",
       borderRadius: 20,
       width: "100%",
       maxWidth: 520,
@@ -978,7 +1021,7 @@ function getCss(T, isDark) {
       borderRadius: 14,
       padding: 18,
     },
-    infoLabel: { fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: FONT_TEXT },
+    infoLabel: { fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 6, fontFamily: FONT_DISPLAY },
     infoVal: { fontSize: 13.5, color: T.infoVal, letterSpacing: "-0.01em", fontFamily: FONT_TEXT },
   };
 }
@@ -1399,6 +1442,154 @@ export default function App() {
   const T = THEMES[theme];
   const isDark = theme === "dark";
   const css = useMemo(() => getCss(T, isDark), [theme]);
+
+  const seedDemoJournalData = useCallback(() => {
+    const now = Date.now();
+    const daysAgo = (d) => new Date(now - d * 86400000).toISOString();
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    const demoCompanies = [
+      { name: "Figma", website: "figma.com" },
+      { name: "Stripe", website: "stripe.com" },
+      { name: "Notion", website: "notion.so" },
+      { name: "Linear", website: "linear.app" },
+      { name: "Ramp", website: "ramp.com" },
+      { name: "Uber", website: "uber.com" },
+      { name: "Spotify", website: "spotify.com" },
+      { name: "Ando", website: "" },
+      { name: "Draxgroup", website: "" },
+      { name: "Starbucks Coffee Company", website: "starbucks.com" },
+    ];
+
+    const titles = [
+      "Senior Product Designer",
+      "Staff Product Designer",
+      "Product Designer",
+      "Founding Designer",
+      "Senior Product Manager, Content Platform",
+      "Customer Care Advisor",
+      "Barista",
+      "Sr. Product Designer – Uber Eats – Gifting",
+    ];
+
+    const contextPool = [];
+
+    const notePool = {
+      interviewing: [
+        "Second round done. Design director asked a lot about ambiguity and cross-functional pushback. Used Block payments redesign as my example — felt strong. Next step is a take-home; I should clarify scope/time expectations before committing.",
+        "Great conversation with the team. They liked the way I framed tradeoffs and asked about measurement. Need to prep a tighter story for my most complex system work.",
+        "Loop is heavy on craft. They want more depth on interaction details. I should bring more process artifacts next round.",
+      ],
+      applied: [
+        "Applied through careers page. JD emphasizes complex workflows which maps to my recent work. Worth a follow-up if I don’t hear back in a week.",
+        "Application sent. Recruiter noted the role is open-ended; might be worth tailoring a one-pager to the product area.",
+      ],
+      offer: [
+        "Offer call went well. Comp seems solid; need to ask about leveling and scope. Follow up with benefits + relocation policy.",
+        "They want an answer by Friday. I should write down my pros/cons and compare against other pipelines.",
+      ],
+      rejected: [
+        "Rejected after final round. Feedback: “Strong craft but we went with someone with more experience shipping 0→1 products.” Frustrating because my Collective Memory project is literally 0→1 — I need to tell that story better.",
+        "Rejected after portfolio review. Recruiter said my case studies lacked a clear narrative thread. I think they wanted a design philosophy page connecting everything. This is a pattern I need to fix.",
+        "Got the rejection email. No specific feedback given, just “decided to move forward with other candidates.” The interview felt good but was very short (15 min portfolio review) which in retrospect was probably a bad sign.",
+      ],
+      interested: [
+        "Saved this role to track. Might be a good fit based on the team’s product surface area.",
+      ],
+    };
+
+    const coRecords = demoCompanies.map((c) => ({
+      id: uid(),
+      name: c.name,
+      description: "",
+      size: "",
+      stage: "",
+      designTeamSize: "",
+      designLeaders: "",
+      culture: "",
+      website: c.website || "",
+    }));
+
+    const stages = ["interested", "applied", "interviewing", "offer", "rejected", "rejected", "rejected"];
+    const makeStageChange = (stage, previousStage, createdAt, text = "", context = "") => ({
+      id: uid(),
+      text,
+      stage,
+      previousStage,
+      createdAt,
+      type: "stage_change",
+      context,
+    });
+    const makeManual = (stage, createdAt, text, context = "") => ({
+      id: uid(),
+      text,
+      stage,
+      previousStage: null,
+      createdAt,
+      type: "manual",
+      context,
+    });
+
+    const jobRecords = [];
+    for (let i = 0; i < coRecords.length; i++) {
+      const co = coRecords[i];
+      const status = pick(stages);
+      const addedAt = daysAgo(18 + (co.name.length % 9));
+      const notes = [];
+
+      // Create a tiny history of stage transitions leading to current status.
+      const chain = status === "interested"
+        ? ["interested"]
+        : status === "applied"
+          ? ["interested", "applied"]
+          : status === "interviewing"
+            ? ["interested", "applied", "interviewing"]
+            : status === "offer"
+              ? ["interested", "applied", "interviewing", "offer"]
+              : ["interested", "applied", "interviewing", "rejected"];
+
+      for (let s = 1; s < chain.length; s++) {
+        const prev = chain[s - 1];
+        const next = chain[s];
+        notes.push(makeStageChange(next, prev, daysAgo(18 - s * 3), "", ""));
+      }
+
+      // Add 1–2 manual notes (with context) for realism.
+      const finalStage = chain[chain.length - 1];
+      const manualCount = finalStage === "rejected" ? 3 : 1;
+      for (let m = 0; m < manualCount; m++) {
+        const text = pick(notePool[finalStage] || notePool.interested);
+        notes.push(makeManual(finalStage, daysAgo(10 - m * 2 - (i % 3)), text, ""));
+      }
+
+      // Ensure newest-first has some variety.
+      notes.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+      jobRecords.push({
+        id: uid(),
+        companyId: co.id,
+        title: pick(titles),
+        location: "",
+        salary: "",
+        summary: "",
+        status,
+        priority: pick(["high", "medium", "low"]),
+        notes,
+        link: "",
+        applicationDate: "",
+        contact: "",
+        addedAt,
+      });
+    }
+
+    setCompanies(coRecords);
+    setJobs(jobRecords);
+    setView("board");
+    setBoardViewMode("journal");
+    setJournalStageFilter("all");
+    setJournalCompanyFilter("");
+    setJournalSearch("");
+  }, []);
 
   const ChevronIcon = useCallback(({ down = true, size = 10, color }) => {
     const svg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='${encodeURIComponent(color || T.textSec)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2 5l4 4 4-4'/%3E%3C/svg%3E")`;
@@ -2051,11 +2242,49 @@ export default function App() {
     setJobs((p) => p.map((j) => (j.id === jobId ? { ...j, priority } : j)));
   };
 
+  const [rejectedNoteModal, setRejectedNoteModal] = useState(null); // { jobId, previousStage, stage, text }
+
+  const appendStageChangeNote = useCallback((jobId, stage, previousStage, text = "", context = "") => {
+    const note = {
+      id: uid(),
+      text: text || "",
+      stage: (stage || "interested").toLowerCase(),
+      previousStage: previousStage ? String(previousStage).toLowerCase() : null,
+      createdAt: new Date().toISOString(),
+      type: "stage_change",
+      context: context || "",
+    };
+    setJobs(p => p.map(j => j.id === jobId ? { ...j, notes: getNotesList(j).concat(note) } : j));
+  }, []);
+
+  const addNote = (jobId, text, context = "") => {
+    const t = (text || "").trim();
+    if (!t) return;
+    const note = {
+      id: uid(),
+      text: t,
+      stage: (jobs.find(j => j.id === jobId)?.status || "interested").toLowerCase(),
+      previousStage: null,
+      createdAt: new Date().toISOString(),
+      type: "manual",
+      context: (context || "").trim(),
+    };
+    setJobs(p => p.map(j => j.id === jobId ? { ...j, notes: getNotesList(j).concat(note) } : j));
+  };
+
   const moveJob = (jobId, newStatus) => {
     const job = jobs.find((j) => j.id === jobId);
-    const movingToOffer = job && (job.status || "").toLowerCase() !== "offer" && newStatus === "offer";
-    setJobs((p) => p.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)));
+    const prevStatus = (job?.status || "interested").toLowerCase();
+    const nextStatus = (newStatus || "interested").toLowerCase();
+    if (prevStatus === nextStatus) return;
+    const movingToOffer = job && prevStatus !== "offer" && nextStatus === "offer";
+    setJobs((p) => p.map((j) => (j.id === jobId ? { ...j, status: nextStatus } : j)));
     if (activeJobId === jobId) setActiveJobId(jobId);
+    if (nextStatus === "rejected") {
+      setRejectedNoteModal({ jobId, previousStage: prevStatus, stage: nextStatus, text: "" });
+    } else {
+      appendStageChangeNote(jobId, nextStatus, prevStatus, "", "");
+    }
     if (movingToOffer) {
       setTimeout(() => {
         const colors = ["#4ade80", "#22c55e", "#7c5cfc", "#38bdf8", "#fbbf24", "#fff"];
@@ -2069,12 +2298,6 @@ export default function App() {
         });
       }, 50);
     }
-  };
-
-  const addNote = (jobId, text) => {
-    if (!text.trim()) return;
-    const note = { id: uid(), text: text.trim(), createdAt: new Date().toISOString() };
-    setJobs(p => p.map(j => j.id === jobId ? { ...j, notes: getNotesList(j).concat(note) } : j));
   };
   const deleteNote = (jobId, noteId) => {
     setJobs(p => p.map(j => j.id === jobId ? { ...j, notes: getNotesList(j).filter(n => n.id !== noteId) } : j));
@@ -2108,6 +2331,10 @@ export default function App() {
     return BRAND_COLOR_LOADING_GREY;
   };
   const [boardSearch, setBoardSearch] = useState("");
+  const [journalSearch, setJournalSearch] = useState("");
+  const [journalStageFilter, setJournalStageFilter] = useState("all"); // all | interested | applied | interviewing | offer | rejected | compare
+  const [journalCompanyFilter, setJournalCompanyFilter] = useState(""); // companyId
+  const [journalCompareCompanyIds, setJournalCompareCompanyIds] = useState([]); // 2-4 companyIds
   const [priorityFilter, setPriorityFilter] = useState(""); // "" | "high" | "medium" | "low"
   const [sortBy, setSortBy] = useState("priority"); // "priority" | "date" | "company"
 
@@ -2147,6 +2374,23 @@ export default function App() {
     }
     return map;
   }, [jobs, boardSearch, priorityFilter, sortBy, companies]);
+
+  const allJournalEntries = useMemo(() => {
+    const list = [];
+    for (const job of jobs) {
+      const co = getCompany(job.companyId);
+      const notes = getNotesList(job);
+      for (const note of notes) {
+        list.push({
+          note,
+          job,
+          company: co,
+        });
+      }
+    }
+    list.sort((a, b) => new Date(b.note.createdAt || 0) - new Date(a.note.createdAt || 0));
+    return list;
+  }, [jobs, companies]);
   const byStatus = (s) => jobsByStatus[s] || [];
   const totalActive = jobs.filter(j => jobStatus(j) !== "rejected").length;
 
@@ -2452,22 +2696,33 @@ export default function App() {
                 {[
                   ["kanban", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
                   ["table", <svg key="table" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18M3 15h18" /></svg>],
+                  ["journal", <svg key="journal" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 0-4 4V4z" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h6" /></svg>],
                 ].map(([mode, icon]) => (
                   <button key={mode} onClick={() => setBoardViewMode(mode)} style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     padding: "6px 12px", borderRadius: 6, border: `1px solid ${boardViewMode === mode ? T.border : "transparent"}`, cursor: "pointer", fontSize: 14, transition: "all 0.15s", fontWeight: 500, fontFamily: FONT_TEXT,
                     background: boardViewMode === mode ? T.surfaceHover : "transparent",
                     color: boardViewMode === mode ? T.text : T.textMuted,
-                  }} title={mode === "kanban" ? "Kanban view" : "Table view"}>{icon}</button>
+                  }} title={mode === "kanban" ? "Kanban view" : mode === "table" ? "Table view" : "Journal view"}>{icon}</button>
                 ))}
               </div>
-              <input
-                type="text"
-                placeholder="Search company or job title..."
-                value={boardSearch}
-                onChange={(e) => setBoardSearch(e.target.value)}
-                style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
-              />
+              {boardViewMode !== "journal" ? (
+                <input
+                  type="text"
+                  placeholder="Search company or job title..."
+                  value={boardSearch}
+                  onChange={(e) => setBoardSearch(e.target.value)}
+                  style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
+                />
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Search notes or company..."
+                  value={journalSearch}
+                  onChange={(e) => setJournalSearch(e.target.value)}
+                  style={{ ...css.input, width: 240, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
+                />
+              )}
               {(() => {
                 const selectBaseStyle = {
                   ...css.select,
@@ -2484,6 +2739,7 @@ export default function App() {
                 };
                 const selectWrapperStyle = { position: "relative", display: "inline-block" };
                 const chevronOverlayStyle = { position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" };
+                if (boardViewMode === "journal") return null;
                 return (
               <div style={{ display: "flex", alignItems: "center", gap: 18, flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2675,13 +2931,40 @@ export default function App() {
                           </div>
                         )}
                         {(() => {
-                          const noteList = getNotesList(job);
-                          if (noteList.length === 0) return null;
-                          const latest = noteList[noteList.length - 1];
+                          const manualNotes = getManualNotesList(job);
+                          if (manualNotes.length === 0) return null;
+                          const latest = manualNotes[manualNotes.length - 1];
+                          const latestText = (latest?.text || "").trim();
                           return (
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em" }}>
-                              {latest.text.slice(0, 60)}{latest.text.length > 60 ? "…" : ""}
-                              {noteList.length > 1 && <span style={{ opacity: 0.8, fontWeight: 500 }}> · {noteList.length} notes</span>}
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, width: "100%" }}>
+                              <span
+                                style={{
+                                  flex: 1,
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                }}
+                              >
+                                {latestText}
+                              </span>
+                              {manualNotes.length >= 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setView("board");
+                                    setBoardViewMode("journal");
+                                    setJournalStageFilter("all");
+                                    setJournalCompanyFilter(job.companyId || "");
+                                  }}
+                                  style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.85, fontWeight: 500, color: "inherit", fontSize: 12, whiteSpace: "nowrap" }}
+                                  title="View notes in Journal"
+                                >
+                                  · {manualNotes.length} note{manualNotes.length === 1 ? "" : "s"}
+                                </button>
+                              )}
                             </div>
                           );
                         })()}
@@ -2859,7 +3142,29 @@ export default function App() {
                                     {initials(co.name)}
                                   </div>
                                 )}
-                                <span style={{ fontWeight: 600, letterSpacing: "-0.01em" }}>{co?.name || "—"}</span>
+                                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                                  <span style={{ fontWeight: 600, letterSpacing: "-0.01em" }}>{co?.name || "—"}</span>
+                                  {(() => {
+                                    const n = getNotesList(job);
+                                    if (n.length === 0) return null;
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setView("board");
+                                          setBoardViewMode("journal");
+                                          setJournalStageFilter("all");
+                                          setJournalCompanyFilter(job.companyId || "");
+                                        }}
+                                        style={{ background: "none", border: "none", padding: 0, marginTop: 3, textAlign: "left", fontSize: 11, color: T.textMuted, cursor: "pointer" }}
+                                        title="View notes in Journal"
+                                      >
+                                        {n.length} note{n.length === 1 ? "" : "s"}
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
                               </div>
                             </td>
                             <td style={{ ...getTdStyle("position"), fontWeight: 600, whiteSpace: "normal", letterSpacing: "-0.02em" }}>{job.title}</td>
@@ -2933,6 +3238,243 @@ export default function App() {
                   <div style={{ display: "flex", gap: 20, padding: "14px 18px", fontSize: 13, color: T.textMuted }}>
                     <span>Count <strong style={{ color: T.text, fontWeight: 700 }}>{tableSorted.length}</strong></span>
                   </div>
+                </div>
+              );
+            })()}
+
+            {/* Journal View */}
+            {boardViewMode === "journal" && (() => {
+              const highlight = (text, q) => {
+                const s = String(text || "");
+                const qq = (q || "").trim();
+                if (!qq) return s;
+                const esc = qq.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const re = new RegExp(esc, "ig");
+                const parts = s.split(re);
+                const matches = s.match(re) || [];
+                const out = [];
+                for (let i = 0; i < parts.length; i++) {
+                  if (parts[i]) out.push(<span key={`t_${i}`}>{parts[i]}</span>);
+                  if (matches[i]) out.push(<mark key={`m_${i}`} style={{ background: `${T.accent}22`, color: T.text, padding: "0 2px", borderRadius: 4 }}>{matches[i]}</mark>);
+                }
+                return out.length ? out : s;
+              };
+
+              const stageTabs = [
+                ["all", "All notes"],
+                ["interested", "Interested"],
+                ["applied", "Applied"],
+                ["interviewing", "Interviewing"],
+                ["offer", "Offer"],
+                ["rejected", "Rejected"],
+                ["compare", "Compare"],
+              ];
+
+              const q = journalSearch.trim().toLowerCase();
+              const filtered = allJournalEntries.filter(({ note, company }) => {
+                if (journalStageFilter !== "all" && journalStageFilter !== "compare" && (note.stage || "").toLowerCase() !== journalStageFilter) return false;
+                if (journalCompanyFilter && (company?.id || "") !== journalCompanyFilter) return false;
+                if (q) {
+                  const coName = (company?.name || "").toLowerCase();
+                  const txt = (note.text || "").toLowerCase();
+                  return coName.includes(q) || txt.includes(q);
+                }
+                return true;
+              });
+
+              const pill = (active) => ({
+                ...css.btn("sec"),
+                padding: "6px 10px",
+                fontSize: 12,
+                borderRadius: 999,
+                borderColor: active ? T.accent : T.border,
+                color: active ? T.accent : T.textSec,
+                background: active ? `${T.accent}14` : T.surface,
+              });
+
+              const companyOptions = companies
+                .slice()
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                .map(c => ({ id: c.id, name: c.name }));
+
+              return (
+                <div style={{ flex: 1, padding: "18px 20px 84px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flexWrap: "wrap",
+                        padding: 4,
+                        borderRadius: 14,
+                        background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+                        border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`,
+                      }}
+                    >
+                      {stageTabs.map(([id, label]) => (
+                        <button key={id} type="button" onClick={() => setJournalStageFilter(id)} style={{ ...pill(journalStageFilter === id), padding: "6px 9px" }}>{label}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {import.meta.env.DEV && (
+                        <button
+                          type="button"
+                          onClick={seedDemoJournalData}
+                          style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10 }}
+                          title="Replace current data with demo journal notes"
+                        >
+                          Seed demo notes
+                        </button>
+                      )}
+                      <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Company</span>
+                      <select value={journalCompanyFilter} onChange={(e) => setJournalCompanyFilter(e.target.value)} style={{ ...css.select, height: 34, fontSize: 12, padding: "0 10px", borderRadius: 8, minWidth: 180 }}>
+                        <option value="">All</option>
+                        {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {journalStageFilter === "compare" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 13, color: T.textSec, lineHeight: 1.5 }}>
+                          Select 2–4 companies to compare their notes side by side.
+                        </div>
+                        <select
+                          multiple
+                          value={journalCompareCompanyIds}
+                          onChange={(e) => {
+                            const selected = Array.from(e.target.selectedOptions).map(o => o.value).filter(Boolean);
+                            setJournalCompareCompanyIds(selected.slice(0, 4));
+                          }}
+                          style={{ ...css.select, minWidth: 260, height: 92, padding: 8, borderRadius: 10, fontSize: 12 }}
+                        >
+                          {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(2, Math.min(4, journalCompareCompanyIds.length || 2))}, minmax(0, 1fr))`, gap: 12 }}>
+                        {journalCompareCompanyIds.slice(0, 4).map((cid) => {
+                          const co = companies.find(c => c.id === cid);
+                          const entries = allJournalEntries.filter(e => e.company?.id === cid);
+                          const byStage = STATUSES.reduce((acc, st) => { acc[st.id] = []; return acc; }, {});
+                          for (const e of entries) byStage[(e.note.stage || "interested").toLowerCase()]?.push(e);
+                          return (
+                            <div key={cid} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, minHeight: 240 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 10, color: T.text }}>{co?.name || "Company"}</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                {STATUSES.map(st => {
+                                  const arr = byStage[st.id] || [];
+                                  if (arr.length === 0) return null;
+                                  return (
+                                    <div key={st.id}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: st.color }}>{st.label}</span>
+                                        <span style={{ fontSize: 11, color: T.textMuted }}>{arr.length}</span>
+                                      </div>
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                        {arr.slice(0, 8).map(({ note, job }) => (
+                                          <div key={note.id} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: "8px 10px", background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)" }}>
+                                            <div style={{ fontSize: 12, color: T.text, fontWeight: 700, letterSpacing: "-0.01em" }}>{job?.title || "Role"}</div>
+                                            {!!note.text && <div style={{ marginTop: 4, fontSize: 12, color: T.textSec, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{highlight(note.text, journalSearch)}</div>}
+                                            {/* context removed */}
+                                            <div style={{ marginTop: 6, fontSize: 10.5, color: T.textMuted }}>{formatNoteTime(note.createdAt)}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ position: "relative", paddingLeft: 22 }}>
+                      <div style={{ position: "absolute", left: 10, top: 6, bottom: 6, width: 2, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", borderRadius: 2 }} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {filtered.map(({ note, job, company }) => {
+                          if ((note?.type || "manual") === "stage_change") return null;
+                          const st = getStatusMetaSafe(note.stage);
+                          return (
+                            <div
+                              key={`${job.id}_${note.id}`}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "16px 1fr",
+                                gap: 12,
+                                alignItems: "center",
+                                padding: "2px 0",
+                              }}
+                            >
+                              <div style={{ width: 16, display: "flex", justifyContent: "center" }}>
+                                <div style={{ width: 10, height: 10, borderRadius: 999, background: st.color, boxShadow: isDark ? "0 0 0 4px rgba(255,255,255,0.02)" : "0 0 0 4px rgba(0,0,0,0.02)" }} />
+                              </div>
+                              <div
+                                style={{
+                                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                                  border: "none",
+                                  borderRadius: 14,
+                                  padding: "12px 12px",
+                                  cursor: "pointer",
+                                  transition: "transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => openJob(job)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    openJob(job);
+                                  }
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = "translateY(-1px)";
+                                  e.currentTarget.style.boxShadow = isDark ? "0 10px 26px rgba(0,0,0,0.35)" : "0 10px 26px rgba(0,0,0,0.08)";
+                                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.025)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = "none";
+                                  e.currentTarget.style.boxShadow = "none";
+                                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)";
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+                                    <span style={{ fontWeight: 700, letterSpacing: "-0.01em" }}>{highlight(company?.name || "—", journalSearch)}</span>
+                                    <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
+                                      {st.label}
+                                    </span>
+                                    {note.type === "stage_change" && (
+                                      <span style={{ fontSize: 11, color: T.textMuted }}>
+                                        {getStatusMeta(note.previousStage)?.label || "—"} → {getStatusMeta(note.stage)?.label || getStatusMetaSafe(note.stage)?.label || "—"}
+                                      </span>
+                                    )}
+                                    <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 500 }}>{highlight(job?.title || "", journalSearch)}</span>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>{formatNoteTime(note.createdAt)}</div>
+                                </div>
+
+                                {!!note.text && (
+                                  <div style={{ marginTop: 10, fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                    {highlight(note.text, journalSearch)}
+                                  </div>
+                                )}
+                                {/* context removed */}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {filtered.length === 0 && (
+                          <div style={{ padding: 28, color: T.textMuted, textAlign: "center", fontSize: 14, fontWeight: 500 }}>
+                            No notes match your filters.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -3092,13 +3634,29 @@ export default function App() {
                 </div>
               )}
               {(() => {
-                const noteList = getNotesList(job);
-                if (noteList.length === 0) return null;
-                const latest = noteList[noteList.length - 1];
+                const manualNotes = getManualNotesList(job);
+                if (manualNotes.length === 0) return null;
+                const latest = manualNotes[manualNotes.length - 1];
+                const latestText = (latest?.text || "").trim();
                 return (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em" }}>
-                    {latest.text.slice(0, 60)}{latest.text.length > 60 ? "…" : ""}
-                    {noteList.length > 1 && <span style={{ opacity: 0.8, fontWeight: 500 }}> · {noteList.length} notes</span>}
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, width: "100%" }}>
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      {latestText}
+                    </span>
+                    {manualNotes.length > 0 && (
+                      <span style={{ opacity: 0.85, fontWeight: 500, whiteSpace: "nowrap", fontSize: 12, lineHeight: 1.5 }}>
+                        · {manualNotes.length} note{manualNotes.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                   </div>
                 );
               })()}
@@ -3407,16 +3965,42 @@ export default function App() {
         const closeJobModal = () => { setEditing(null); setModal(null); setJobDetailMenuOpen(false); };
         return (
         <div className="scout-overlay" style={css.overlay} onClick={e => { if (e.target === e.currentTarget) closeJobModal(); }}>
-          <div className="scout-modal scout-job-modal" style={{ ...css.modal, maxWidth: 600, overflow: "visible", padding: 0, borderTop: `4px solid ${detailCoColor}`, borderLeft: "none", borderRight: "none" }}>
+          <div
+            className="scout-modal scout-job-modal"
+            style={{
+              ...css.modal,
+              maxWidth: 600,
+              overflow: "hidden",
+              padding: 0,
+              border: "none",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "none",
+            }}
+          >
             {/* Brand-color header: company, title, location, salary, actions — ends before description */}
             {(() => {
               const headerFg = textOnColor(detailCoColor);
               const headerFgMuted = headerFg === "#ffffff" ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.7)";
-              const btnOnBrand = { background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: headerFg, textDecoration: "none", fontSize: 11.5, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontFamily: FONT_TEXT };
+              const btnOnBrand = { background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: headerFg, textDecoration: "none", fontSize: 11.5, padding: "0 12px", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontFamily: FONT_TEXT, display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, lineHeight: 1 };
               return (
-            <div className="scout-job-modal-header-inner" style={{ background: detailCoColor, color: headerFg, padding: "20px 28px 32px", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+            <div
+              className="scout-job-modal-header-inner"
+              style={{
+                background: detailCoColor,
+                color: headerFg,
+                padding: "20px 28px 32px",
+                width: "100%",
+                alignSelf: "stretch",
+                flexShrink: 0,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                overflow: "hidden",
+                backgroundClip: "padding-box",
+              }}
+            >
             {/* Row 1: Company name + View Job, menu, close */}
-            <div className="scout-job-modal-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, paddingBottom: 24 }}>
+            <div className="scout-job-modal-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, paddingBottom: 16, borderBottom: "none" }}>
               {detailCo && (
                 <div className="scout-job-modal-company" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, overflow: "hidden" }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: headerFg, flexShrink: 0, boxShadow: "none" }}>
@@ -3440,7 +4024,7 @@ export default function App() {
                   <a href={activeJob.link} target="_blank" rel="noopener noreferrer" style={btnOnBrand}>↗ View Job</a>
                 )}
                 <div style={{ position: "relative" }}>
-                  <button type="button" onClick={() => setJobDetailMenuOpen(o => !o)} style={{ ...btnOnBrand, padding: "8px 10px", fontSize: 16, lineHeight: 1, minWidth: 36, minHeight: 36 }} title="More actions">⋮</button>
+                  <button type="button" onClick={() => setJobDetailMenuOpen(o => !o)} style={{ ...btnOnBrand, padding: 0, width: 36, fontSize: 16 }} title="More actions">⋮</button>
                   {jobDetailMenuOpen && (
                     <>
                       <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setJobDetailMenuOpen(false)} aria-hidden="true" />
@@ -3450,7 +4034,7 @@ export default function App() {
                     </>
                   )}
                 </div>
-                <button type="button" onClick={closeJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, fontSize: 22, lineHeight: 1, color: headerFg, opacity: 0.9, minWidth: 44, minHeight: 44 }} aria-label="Close">×</button>
+                <button type="button" onClick={closeJobModal} style={{ ...btnOnBrand, padding: 0, width: 36, fontSize: 20 }} aria-label="Close">×</button>
               </div>
             </div>
             {/* Row 2: Job title */}
@@ -3497,7 +4081,7 @@ export default function App() {
               );
             })()}
 
-            <div className="scout-job-modal-content" style={{ padding: "0 28px 0", position: "relative" }}>
+            <div className="scout-job-modal-content" style={{ padding: "0 28px 24px", position: "relative", overflowY: "auto", overflowX: "hidden", flex: 1, minHeight: 0, background: T.surface, scrollbarGutter: "stable" }}>
             <div style={{ marginTop: 24, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.border}` }}>
               {editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "summary" ? (
                 <textarea
@@ -3594,30 +4178,120 @@ export default function App() {
               <label style={css.label}>Notes</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {getNotesList(activeJob).slice().reverse().map((note) => (
-                  <div key={note.id} style={{ background: T.surface, borderRadius: 8, padding: "10px 12px", border: `1px solid ${T.border}` }}>
-                    <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{note.text}</div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                  <div
+                    key={note.id}
+                    style={{
+                      background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255, 255, 255, 1)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      border: `1px solid ${T.border}`,
+                      boxShadow: "none",
+                      outline: "none",
+                      width: "100%",
+                      boxSizing: "border-box",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {(() => {
+                          const st = getStatusMetaSafe(note.stage || jobStatus(activeJob));
+                          return (
+                            <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
+                              {st.label}
+                            </span>
+                          );
+                        })()}
+                        {note.type === "stage_change" ? null : null}
+                      </div>
                       <span style={{ fontSize: 10.5, color: T.textMuted }}>{formatNoteTime(note.createdAt)}</span>
-                      <button type="button" onClick={() => deleteNote(activeJob.id, note.id)} style={{ background: "none", border: "none", color: T.textMuted, fontSize: 11, cursor: "pointer", padding: "2px 6px" }}>Remove</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", letterSpacing: "-0.03px" }}>
+                      {note.type === "stage_change"
+                        ? `${getStatusMeta(note.previousStage)?.label || "—"} → ${getStatusMeta(note.stage)?.label || getStatusMetaSafe(note.stage)?.label || "—"}${note.text ? `\n${note.text}` : ""}`
+                        : note.text}
+                    </div>
+                    {/* context removed */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, width: "100%" }}>
+                      <button
+                        type="button"
+                        onClick={() => deleteNote(activeJob.id, note.id)}
+                        style={{ background: "none", border: "none", color: T.textMuted, fontSize: 11, cursor: "pointer", padding: "2px 6px", maxWidth: "100%" }}
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
-                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${T.border}`, padding: 10, borderRadius: 12 }}>
                   <textarea
                     style={{ ...css.textarea, minHeight: 56, resize: "vertical", flex: 1 }}
                     value={newNoteInput}
                     onChange={e => setNewNoteInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNote(activeJob.id, newNoteInput); setNewNoteInput(""); } }}
                     placeholder="Add a note (Interview notes, prep, gut feelings, dates to remember...)"
                     rows={2}
                   />
-                  <button type="button" style={css.btn("primary")} onClick={() => { addNote(activeJob.id, newNoteInput); setNewNoteInput(""); }} disabled={!newNoteInput.trim()}>Add</button>
+                  <button
+                    type="button"
+                    style={css.btn("primary")}
+                    onClick={() => { addNote(activeJob.id, newNoteInput); setNewNoteInput(""); }}
+                    disabled={!newNoteInput.trim()}
+                  >
+                    Add note
+                  </button>
                 </div>
               </div>
             </div>
             </div>
           </div>
         </div>
+        );
+      })()}
+
+      {rejectedNoteModal && (() => {
+        const job = jobs.find(j => j.id === rejectedNoteModal.jobId);
+        const co = job ? getCompany(job.companyId) : null;
+        const prev = getStatusMetaSafe(rejectedNoteModal.previousStage);
+        const next = getStatusMetaSafe(rejectedNoteModal.stage);
+        const skip = () => {
+          appendStageChangeNote(rejectedNoteModal.jobId, rejectedNoteModal.stage, rejectedNoteModal.previousStage, "", "");
+          setRejectedNoteModal(null);
+        };
+        const save = () => {
+          appendStageChangeNote(rejectedNoteModal.jobId, rejectedNoteModal.stage, rejectedNoteModal.previousStage, (rejectedNoteModal.text || "").trim(), "");
+          setRejectedNoteModal(null);
+        };
+        return (
+          <div className="scout-overlay" style={css.overlay} onClick={e => e.target === e.currentTarget && skip()}>
+            <div className="scout-modal" style={{ ...css.modal, maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...css.modalTitle, marginBottom: 6 }}>Add a rejection note</div>
+                  <div style={{ fontSize: 13, color: T.textSec, lineHeight: 1.4 }}>
+                    <strong style={{ color: T.text }}>{co?.name || "Company"}</strong> · <span style={{ color: T.textMuted }}>{job?.title || "Role"}</span>
+                  </div>
+                </div>
+                <button type="button" onClick={skip} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
+              </div>
+
+              <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 10 }}>
+                Stage moved: <span style={{ fontWeight: 700, color: prev.color }}>{prev.label}</span> → <span style={{ fontWeight: 700, color: next.color }}>{next.label}</span>
+              </div>
+
+              <textarea
+                value={rejectedNoteModal.text}
+                onChange={(e) => setRejectedNoteModal(p => ({ ...p, text: e.target.value }))}
+                placeholder="What happened? Any feedback?"
+                style={{ ...css.textarea, minHeight: 110, marginBottom: 10 }}
+              />
+              <div style={{ height: 4 }} />
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button type="button" onClick={skip} style={css.btn("sec")}>Skip</button>
+                <button type="button" onClick={save} style={css.btn("primary")}>Save</button>
+              </div>
+            </div>
+          </div>
         );
       })()}
 
