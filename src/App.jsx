@@ -3364,7 +3364,7 @@ export default function App() {
                 }
                 return true;
               });
-              const filteredVisible = filtered.filter(({ note }) => (note?.type || "manual") !== "stage_change");
+              const filteredVisible = filtered.filter(({ note }) => (note?.type || "manual") !== "stage_change" || !!(note?.text || "").trim());
 
               const pill = (id, active) => {
                 const sid = (id || "").toLowerCase();
