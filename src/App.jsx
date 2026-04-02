@@ -2334,8 +2334,13 @@ export default function App() {
   const [journalSearch, setJournalSearch] = useState("");
   const [journalStageFilter, setJournalStageFilter] = useState("all"); // all | interested | applied | interviewing | offer | rejected
   const [journalCompanyFilter, setJournalCompanyFilter] = useState(""); // companyId
+  const [journalAnimNonce, setJournalAnimNonce] = useState(0);
   const [priorityFilter, setPriorityFilter] = useState(""); // "" | "high" | "medium" | "low"
   const [sortBy, setSortBy] = useState("priority"); // "priority" | "date" | "company"
+
+  useEffect(() => {
+    setJournalAnimNonce((n) => n + 1);
+  }, [journalSearch, journalStageFilter, journalCompanyFilter]);
 
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   const filterAndSortJobs = (jobList) => {
@@ -2414,6 +2419,28 @@ export default function App() {
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${T.textMuted};border-radius:4px}
         .scout-journal-stage-tabs::-webkit-scrollbar{display:none}
+        .scout-journal-card{width:100%;box-sizing:border-box;justify-self:start}
+        .scout-journal-timeline{width:100%}
+        @keyframes scoutTimelineInA {
+          from { opacity: 0; transform: translate3d(0, 8px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+        @keyframes scoutTimelineInB {
+          from { opacity: 0; transform: translate3d(0, 8px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+        @keyframes scoutTimelineSpineA {
+          from { opacity: 0; transform: translateX(-50%) scaleY(0.6); }
+          to { opacity: 1; transform: translateX(-50%) scaleY(1); }
+        }
+        @keyframes scoutTimelineSpineB {
+          from { opacity: 0; transform: translateX(-50%) scaleY(0.6); }
+          to { opacity: 1; transform: translateX(-50%) scaleY(1); }
+        }
+        @media (min-width: 900px) {
+          .scout-journal-timeline{max-width:50vw;min-width:420px;margin-left:auto;margin-right:auto}
+          .scout-journal-card{max-width:100%}
+        }
         button:disabled{opacity:0.4;cursor:not-allowed}
         select option{background:${T.surface};color:${T.text}}
         table{border-spacing:0}
@@ -2430,6 +2457,7 @@ export default function App() {
         }
         @media (prefers-reduced-motion: reduce) {
           .scout-feedback-banner { animation: none; opacity: 1; transform: none; }
+          .scout-journal-card { animation: none !important; }
         }
         @media (max-width: 640px) {
           .scout-header { padding: 12px 16px; gap: 10px; }
@@ -2936,10 +2964,23 @@ export default function App() {
                           const latest = manualNotes[manualNotes.length - 1];
                           const latestText = (latest?.text || "").trim();
                           return (
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, width: "100%" }}>
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setView("board");
+                                  setBoardViewMode("journal");
+                                  setJournalStageFilter("all");
+                                  setJournalCompanyFilter(job.companyId || "");
+                                }}
+                                style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.9, fontWeight: 700, color: "inherit", fontSize: 12, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}
+                                title="View notes in Journal"
+                              >
+                                Notes • {manualNotes.length}
+                              </button>
                               <span
                                 style={{
-                                  flex: 1,
                                   minWidth: 0,
                                   overflow: "hidden",
                                   display: "-webkit-box",
@@ -2949,22 +2990,6 @@ export default function App() {
                               >
                                 {latestText}
                               </span>
-                              {manualNotes.length >= 1 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setView("board");
-                                    setBoardViewMode("journal");
-                                    setJournalStageFilter("all");
-                                    setJournalCompanyFilter(job.companyId || "");
-                                  }}
-                                  style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.85, fontWeight: 500, color: "inherit", fontSize: 12, whiteSpace: "nowrap" }}
-                                  title="View notes in Journal"
-                                >
-                                  · {manualNotes.length} note{manualNotes.length === 1 ? "" : "s"}
-                                </button>
-                              )}
                             </div>
                           );
                         })()}
@@ -3280,6 +3305,7 @@ export default function App() {
                 }
                 return true;
               });
+              const filteredVisible = filtered.filter(({ note }) => (note?.type || "manual") !== "stage_change");
 
               const pill = (id, active) => {
                 const sid = (id || "").toLowerCase();
@@ -3367,27 +3393,33 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div style={{ position: "relative", paddingLeft: 22 }}>
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: 10,
-                          top: 6,
-                          bottom: 6,
-                          width: 2,
-                          borderRadius: 2,
-                          background: `linear-gradient(to bottom,
-                            ${isDark ? "rgba(255,255,255,0.00)" : "rgba(0,0,0,0.00)"} 0%,
-                            ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} 8%,
-                            ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} 92%,
-                            ${isDark ? "rgba(255,255,255,0.00)" : "rgba(0,0,0,0.00)"} 100%
-                          )`,
-                        }}
-                      />
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {filtered.map(({ note, job, company }) => {
-                          if ((note?.type || "manual") === "stage_change") return null;
+                  <div className="scout-journal-timeline" style={{ position: "relative", paddingLeft: 22, paddingTop: 60, paddingBottom: 60 }}>
+                      {/* continuous baseline spine (with fade at ends) */}
+                      {filteredVisible.length > 0 && (
+                        <div
+                          aria-hidden="true"
+                          style={{
+                            position: "absolute",
+                            left: 10,
+                            top: 0,
+                            bottom: 0,
+                            width: 2,
+                            borderRadius: 2,
+                            pointerEvents: "none",
+                            zIndex: 0,
+                            background: isDark
+                              ? "linear-gradient(to bottom, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.06) 10%, rgba(255,255,255,0.06) 90%, rgba(255,255,255,0.00) 100%)"
+                              : "linear-gradient(to bottom, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.06) 10%, rgba(0,0,0,0.06) 90%, rgba(0,0,0,0.00) 100%)",
+                          }}
+                        />
+                      )}
+                      <div key={journalAnimNonce} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {filteredVisible.map(({ note, job, company }, idx) => {
                           const st = getStatusMetaSafe(note.stage);
+                          const coColor = company ? getCompanyColorForDisplay(company) : T.textMuted;
+                          const dotMaskColor = isDark ? "rgba(26,26,26,1)" : "rgba(255,255,255,1)";
+                          const spineColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+                          const isLast = idx === filteredVisible.length - 1;
                           return (
                             <div
                               key={`${job.id}_${note.id}`}
@@ -3397,6 +3429,7 @@ export default function App() {
                                 gap: 12,
                                 alignItems: "center",
                                 padding: "2px 0",
+                                position: "relative",
                               }}
                             >
                               <div style={{ width: 16, display: "flex", justifyContent: "center", position: "relative" }}>
@@ -3408,14 +3441,31 @@ export default function App() {
                                     transform: "translateY(-50%)",
                                     width: 18,
                                     height: 2,
-                                    background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                                    background: spineColor,
                                     borderRadius: 2,
                                     pointerEvents: "none",
+                                    zIndex: 0,
+                                    animation: `${journalAnimNonce % 2 ? "scoutTimelineInA" : "scoutTimelineInB"} 520ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                    animationDelay: `${Math.min(idx * 90, 1200)}ms`,
                                   }}
                                 />
-                                <div style={{ width: 10, height: 10, borderRadius: 999, background: st.color, boxShadow: isDark ? "0 0 0 4px rgba(255,255,255,0.02)" : "0 0 0 4px rgba(0,0,0,0.02)" }} />
+                                <div
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: 999,
+                                    background: st.color,
+                                    opacity: 1,
+                                    position: "relative",
+                                    zIndex: 1,
+                                    boxShadow: `0 0 0 4px ${dotMaskColor}`,
+                                    animation: `${journalAnimNonce % 2 ? "scoutTimelineInA" : "scoutTimelineInB"} 520ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                    animationDelay: `${Math.min(idx * 90, 1200)}ms`,
+                                  }}
+                                />
                               </div>
                               <div
+                                className="scout-journal-card"
                                 style={{
                                   background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
                                   border: "none",
@@ -3423,6 +3473,8 @@ export default function App() {
                                   padding: "12px 12px",
                                   cursor: "pointer",
                                   transition: "background 0.12s ease",
+                                  animation: `${journalAnimNonce % 2 ? "scoutTimelineInA" : "scoutTimelineInB"} 520ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                  animationDelay: `${Math.min(idx * 90, 1200)}ms`,
                                 }}
                                 role="button"
                                 tabIndex={0}
@@ -3436,6 +3488,18 @@ export default function App() {
                               >
                                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                                   <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+                                    <div style={{
+                                      width: 28, height: 28, borderRadius: 7,
+                                      background: isDark && isColorDark(coColor) ? "rgba(255,255,255,0.12)" : `${coColor}15`,
+                                      border: isDark && isColorDark(coColor) ? "1px solid rgba(255,255,255,0.2)" : "none",
+                                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                      fontSize: 10.5, fontWeight: 700,
+                                      color: isDark && isColorDark(coColor) ? "#fff" : coColor,
+                                      flexShrink: 0,
+                                      transform: "translateY(1px)",
+                                    }}>
+                                      {initials(company?.name || "")}
+                                    </div>
                                     <span style={{ fontWeight: 700, letterSpacing: "-0.01em" }}>{highlight(company?.name || "—", journalSearch)}</span>
                                     <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
                                       {st.label}
@@ -3447,7 +3511,22 @@ export default function App() {
                                     )}
                                     <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 500 }}>{highlight(job?.title || "", journalSearch)}</span>
                                   </div>
-                                  <div style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>{formatNoteTime(note.createdAt)}</div>
+                                  <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                                    {job?.link && (
+                                      <a
+                                        href={job.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.textMuted, textDecoration: "none", fontSize: 11, fontWeight: 600 }}
+                                        title="Open job link"
+                                      >
+                                        <span style={{ lineHeight: 1 }}>View</span>
+                                        <span style={{ opacity: 0.9, lineHeight: 1 }}>↗</span>
+                                      </a>
+                                    )}
+                                    <div style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>{formatNoteTime(note.createdAt)}</div>
+                                  </div>
                                 </div>
 
                                 {!!note.text && (
@@ -3460,7 +3539,7 @@ export default function App() {
                             </div>
                           );
                         })}
-                        {filtered.length === 0 && (
+                        {filteredVisible.length === 0 && (
                           <div style={{ padding: 28, color: T.textMuted, textAlign: "center", fontSize: 14, fontWeight: 500 }}>
                             No notes match your filters.
                           </div>
@@ -3631,10 +3710,12 @@ export default function App() {
                 const latest = manualNotes[manualNotes.length - 1];
                 const latestText = (latest?.text || "").trim();
                 return (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, width: "100%" }}>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                    <div style={{ opacity: 0.9, fontWeight: 700, whiteSpace: "nowrap", fontSize: 12, display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}>
+                      Notes • {manualNotes.length}
+                    </div>
                     <span
                       style={{
-                        flex: 1,
                         minWidth: 0,
                         overflow: "hidden",
                         display: "-webkit-box",
@@ -3644,11 +3725,6 @@ export default function App() {
                     >
                       {latestText}
                     </span>
-                    {manualNotes.length > 0 && (
-                      <span style={{ opacity: 0.85, fontWeight: 500, whiteSpace: "nowrap", fontSize: 12, lineHeight: 1.5 }}>
-                        · {manualNotes.length} note{manualNotes.length === 1 ? "" : "s"}
-                      </span>
-                    )}
                   </div>
                 );
               })()}
@@ -4174,7 +4250,7 @@ export default function App() {
                     key={note.id}
                     style={{
                       background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255, 255, 255, 1)",
-                      borderRadius: 8,
+                      borderRadius: 16,
                       padding: "10px 12px",
                       border: `1px solid ${T.border}`,
                       boxShadow: "none",
@@ -4215,7 +4291,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${T.border}`, padding: 10, borderRadius: 12 }}>
+                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${T.border}`, padding: 10, borderRadius: 16 }}>
                   <textarea
                     style={{ ...css.textarea, minHeight: 56, resize: "vertical", flex: 1 }}
                     value={newNoteInput}
