@@ -766,6 +766,10 @@ function getManualNotesList(job) {
   return getNotesList(job).filter((n) => (n?.type || "manual") !== "stage_change");
 }
 
+function getNotesForCard(job) {
+  return getNotesList(job).filter((n) => (n?.type || "manual") !== "stage_change" || !!(n?.text || "").trim());
+}
+
 function initials(name) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 }
@@ -3018,9 +3022,9 @@ export default function App() {
                           </div>
                         )}
                         {(() => {
-                          const manualNotes = getManualNotesList(job);
-                          if (manualNotes.length === 0) return null;
-                          const latest = manualNotes[manualNotes.length - 1];
+                          const notesForCard = getNotesForCard(job);
+                          if (notesForCard.length === 0) return null;
+                          const latest = notesForCard[notesForCard.length - 1];
                           const latestText = (latest?.text || "").trim();
                           return (
                             <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
@@ -3036,7 +3040,7 @@ export default function App() {
                                 style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.9, fontWeight: 700, color: "inherit", fontSize: 12, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}
                                 title="View notes in Journal"
                               >
-                                Notes • {manualNotes.length}
+                                Notes • {notesForCard.length}
                               </button>
                               <span
                                 style={{
