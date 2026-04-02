@@ -2473,6 +2473,7 @@ export default function App() {
           .scout-job-modal-content { padding-left: 16px !important; padding-right: 16px !important; }
           .scout-job-notes-add { flex-direction: column; align-items: stretch !important; }
           .scout-job-notes-add textarea { min-height: 80px; }
+          .scout-job-view-link { display: none !important; }
         }
       `}</style>
 
@@ -3351,46 +3352,89 @@ export default function App() {
                       {stageTabs.map(([id, label]) => (
                         <button key={id} type="button" onClick={() => setJournalStageFilter(id)} style={{ ...pill(id, journalStageFilter === id), padding: "6px 9px", flexShrink: 0 }}>{label}</button>
                       ))}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-                      {import.meta.env.DEV && (
+                      {isMobile && import.meta.env.DEV && (
                         <button
                           type="button"
                           onClick={seedDemoJournalData}
-                          style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10 }}
+                          style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10, flexShrink: 0 }}
                           title="Replace current data with demo journal notes"
                         >
                           Seed demo notes
                         </button>
                       )}
-                      <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 2, whiteSpace: "nowrap" }}>
-                        Company
-                      </span>
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <select
-                          value={journalCompanyFilter}
-                          onChange={(e) => setJournalCompanyFilter(e.target.value)}
-                          style={{
-                            ...css.select,
-                            height: 40,
-                            lineHeight: "40px",
-                            fontSize: 12.5,
-                            padding: "0 34px 0 12px",
-                            borderRadius: 12,
-                            minWidth: 220,
-                            appearance: "none",
-                            WebkitAppearance: "none",
-                            boxSizing: "border-box",
-                          }}
-                        >
-                          <option value="">All</option>
-                          {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                          <ChevronIcon down size={10} color={T.textSec} />
-                        </span>
-                      </div>
+                      {isMobile && (
+                        <>
+                          <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 8, marginRight: 2, whiteSpace: "nowrap", flexShrink: 0 }}>
+                            Company
+                          </span>
+                          <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
+                            <select
+                              value={journalCompanyFilter}
+                              onChange={(e) => setJournalCompanyFilter(e.target.value)}
+                              style={{
+                                ...css.select,
+                                height: 40,
+                                lineHeight: "40px",
+                                fontSize: 12.5,
+                                padding: "0 34px 0 12px",
+                                borderRadius: 12,
+                                minWidth: 200,
+                                appearance: "none",
+                                WebkitAppearance: "none",
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              <option value="">All</option>
+                              {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                              <ChevronIcon down size={10} color={T.textSec} />
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
+                    {!isMobile && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+                        {import.meta.env.DEV && (
+                          <button
+                            type="button"
+                            onClick={seedDemoJournalData}
+                            style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10 }}
+                            title="Replace current data with demo journal notes"
+                          >
+                            Seed demo notes
+                          </button>
+                        )}
+                        <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 2, whiteSpace: "nowrap" }}>
+                          Company
+                        </span>
+                        <div style={{ position: "relative", display: "inline-block" }}>
+                          <select
+                            value={journalCompanyFilter}
+                            onChange={(e) => setJournalCompanyFilter(e.target.value)}
+                            style={{
+                              ...css.select,
+                              height: 40,
+                              lineHeight: "40px",
+                              fontSize: 12.5,
+                              padding: "0 34px 0 12px",
+                              borderRadius: 12,
+                              minWidth: 220,
+                              appearance: "none",
+                              WebkitAppearance: "none",
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <option value="">All</option>
+                            {companyOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                            <ChevronIcon down size={10} color={T.textSec} />
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="scout-journal-timeline" style={{ position: "relative", paddingLeft: 22, paddingTop: 60, paddingBottom: 60 }}>
@@ -3413,7 +3457,7 @@ export default function App() {
                           }}
                         />
                       )}
-                      <div key={journalAnimNonce} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div key={journalAnimNonce} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                         {filteredVisible.map(({ note, job, company }, idx) => {
                           const st = getStatusMetaSafe(note.stage);
                           const coColor = company ? getCompanyColorForDisplay(company) : T.textMuted;
@@ -3501,15 +3545,15 @@ export default function App() {
                                       {initials(company?.name || "")}
                                     </div>
                                     <span style={{ fontWeight: 700, letterSpacing: "-0.01em" }}>{highlight(company?.name || "—", journalSearch)}</span>
-                                    <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
-                                      {st.label}
-                                    </span>
                                     {note.type === "stage_change" && (
                                       <span style={{ fontSize: 11, color: T.textMuted }}>
                                         {getStatusMeta(note.previousStage)?.label || "—"} → {getStatusMeta(note.stage)?.label || getStatusMetaSafe(note.stage)?.label || "—"}
                                       </span>
                                     )}
                                     <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 500 }}>{highlight(job?.title || "", journalSearch)}</span>
+                                    <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
+                                      {st.label}
+                                    </span>
                                   </div>
                                   <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                                     {job?.link && (
@@ -3518,6 +3562,7 @@ export default function App() {
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
+                                        className="scout-job-view-link"
                                         style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.textMuted, textDecoration: "none", fontSize: 11, fontWeight: 600 }}
                                         title="Open job link"
                                       >
@@ -3530,7 +3575,17 @@ export default function App() {
                                 </div>
 
                                 {!!note.text && (
-                                  <div style={{ marginTop: 10, fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                  <div
+                                    style={{
+                                      marginTop: 10,
+                                      paddingTop: 16,
+                                      fontSize: 13,
+                                      color: T.text,
+                                      lineHeight: 1.6,
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
                                     {highlight(note.text, journalSearch)}
                                   </div>
                                 )}
