@@ -3530,8 +3530,8 @@ export default function App() {
                                   }
                                 }}
                               >
-                                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
                                     <div style={{
                                       width: 28, height: 28, borderRadius: 7,
                                       background: isDark && isColorDark(coColor) ? "rgba(255,255,255,0.12)" : `${coColor}15`,
@@ -3540,7 +3540,7 @@ export default function App() {
                                       fontSize: 10.5, fontWeight: 700,
                                       color: isDark && isColorDark(coColor) ? "#fff" : coColor,
                                       flexShrink: 0,
-                                      transform: "translateY(1px)",
+                                      transform: "translateY(0px)",
                                     }}>
                                       {initials(company?.name || "")}
                                     </div>
