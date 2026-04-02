@@ -1305,6 +1305,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [importStep, setImportStep] = useState(null);
   const [boardViewMode, setBoardViewMode] = useState("kanban");
+  const [toolbarTooltip, setToolbarTooltip] = useState(null); // { text: string, x: number, y: number }
   const [tableSortColumn, setTableSortColumn] = useState("company");
   const [tableSortDir, setTableSortDir] = useState("asc");
   const TABLE_COLUMNS = useMemo(() => [
@@ -2421,6 +2422,35 @@ export default function App() {
         .scout-journal-stage-tabs::-webkit-scrollbar{display:none}
         .scout-journal-card{width:100%;box-sizing:border-box;justify-self:start}
         .scout-journal-timeline{width:100%}
+        .scout-tooltip-overlay{
+          position:fixed;
+          transform:translate(-50%, -100%);
+          background:${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.88)"};
+          color:${isDark ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.98)"};
+          border:1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.35)"};
+          padding:6px 9px;
+          border-radius:10px;
+          font-size:12px;
+          font-weight:600;
+          letter-spacing:-0.01em;
+          white-space:nowrap;
+          pointer-events:none;
+          z-index:10000;
+          box-shadow:${isDark ? "0 12px 30px rgba(0,0,0,0.35)" : "0 12px 30px rgba(0,0,0,0.18)"};
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+        .scout-tooltip-overlay::after{
+          content:"";
+          position:absolute;
+          left:50%;
+          top:100%;
+          transform:translateX(-50%);
+          width:0;height:0;
+          border-left:6px solid transparent;
+          border-right:6px solid transparent;
+          border-top:6px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.88)"};
+        }
         @keyframes scoutTimelineInA {
           from { opacity: 0; transform: translate3d(0, 8px, 0); }
           to { opacity: 1; transform: translate3d(0, 0, 0); }
@@ -2476,6 +2506,16 @@ export default function App() {
           .scout-job-view-link { display: none !important; }
         }
       `}</style>
+
+      {toolbarTooltip && (
+        <div
+          className="scout-tooltip-overlay"
+          style={{ left: toolbarTooltip.x, top: toolbarTooltip.y }}
+          role="tooltip"
+        >
+          {toolbarTooltip.text}
+        </div>
+      )}
 
       {/* Main */}
       <div style={css.main}>
@@ -2719,20 +2759,38 @@ export default function App() {
         {/* Board */}
         {view === "board" && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", paddingBottom: 72 }}>
-            <div className="scout-board-toolbar" style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, overflowX: isMobile ? "auto" : "visible", overflowY: "hidden", ...(isMobile && { WebkitOverflowScrolling: "touch" }) }}>
+            <div className="scout-board-toolbar" style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, overflowX: isMobile ? "auto" : "visible", overflowY: "visible", ...(isMobile && { WebkitOverflowScrolling: "touch" }) }}>
               <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: isMobile ? "nowrap" : "wrap", minWidth: isMobile ? "min-content" : undefined }}>
               <div style={{ display: "flex", gap: 2, background: isDark ? T.surface : T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2, flexShrink: 0 }}>
                 {[
-                  ["kanban", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
-                  ["table", <svg key="table" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18M3 15h18" /></svg>],
-                  ["journal", <svg key="journal" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 0-4 4V4z" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h6" /></svg>],
-                ].map(([mode, icon]) => (
-                  <button key={mode} onClick={() => setBoardViewMode(mode)} style={{
+                  ["kanban", "Board", <svg key="kanban" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>],
+                  ["table", "Table", <svg key="table" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18M3 15h18" /></svg>],
+                  ["journal", "Notes timeline", <svg key="journal" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 0-4 4V4z" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h6" /></svg>],
+                ].map(([mode, tooltip, icon]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setBoardViewMode(mode)}
+                    aria-label={tooltip}
+                    onMouseEnter={(e) => {
+                      if (typeof window !== "undefined") {
+                        try {
+                          if (!window.matchMedia || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+                        } catch (_) {}
+                      }
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setToolbarTooltip({ text: tooltip, x: r.left + r.width / 2, y: r.top - 8 });
+                    }}
+                    onMouseLeave={() => setToolbarTooltip(null)}
+                    style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     padding: "6px 12px", borderRadius: 6, border: `1px solid ${boardViewMode === mode ? T.border : "transparent"}`, cursor: "pointer", fontSize: 14, transition: "all 0.15s", fontWeight: 500, fontFamily: FONT_TEXT,
                     background: boardViewMode === mode ? T.surfaceHover : "transparent",
                     color: boardViewMode === mode ? T.text : T.textMuted,
-                  }} title={mode === "kanban" ? "Kanban view" : mode === "table" ? "Table view" : "Journal view"}>{icon}</button>
+                    }}
+                  >
+                    {icon}
+                  </button>
                 ))}
               </div>
               {boardViewMode !== "journal" ? (
