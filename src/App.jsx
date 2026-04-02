@@ -3556,20 +3556,6 @@ export default function App() {
                                     </span>
                                   </div>
                                   <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                                    {job?.link && (
-                                      <a
-                                        href={job.link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="scout-job-view-link"
-                                        style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.textMuted, textDecoration: "none", fontSize: 11, fontWeight: 600 }}
-                                        title="Open job link"
-                                      >
-                                        <span style={{ lineHeight: 1 }}>View</span>
-                                        <span style={{ opacity: 0.9, lineHeight: 1 }}>↗</span>
-                                      </a>
-                                    )}
                                     <div style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>{formatNoteTime(note.createdAt)}</div>
                                   </div>
                                 </div>
