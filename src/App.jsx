@@ -1863,6 +1863,34 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [key, jobs, companies]);
 
+  /** Emergency backup from DevTools console: `copy(scoutExportBackup())` then paste into a .json file */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!key) {
+      try {
+        delete window.scoutExportBackup;
+      } catch (_) {}
+      return;
+    }
+    window.scoutExportBackup = () =>
+      JSON.stringify(
+        {
+          version: 1,
+          key,
+          jobs,
+          companies,
+          exportedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      );
+    return () => {
+      try {
+        delete window.scoutExportBackup;
+      } catch (_) {}
+    };
+  }, [key, jobs, companies]);
+
   const handleLogout = () => {
     dataLoadSucceededRef.current = false;
     localStorage.removeItem(SCOUT_KEY_STORAGE);
