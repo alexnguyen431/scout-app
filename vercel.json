@@ -1,6 +1,17 @@
 {
   "buildCommand": "vite build",
   "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "publickey-credentials-get=(), publickey-credentials-create=(), identity-credentials-get=(), bluetooth=(), usb=(), serial=(), hid=()"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
