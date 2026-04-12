@@ -1306,6 +1306,8 @@ export default function App() {
   const [dragGrabOffset, setDragGrabOffset] = useState(null);
   const [dragStartMouse, setDragStartMouse] = useState(null);
   const pendingDragRef = useRef(null);
+  /** After GET /api/data succeeds for the current key; prevents POST from wiping Redis when load failed (401/network) but state is still []. */
+  const dataLoadSucceededRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [importStep, setImportStep] = useState(null);
   const [boardViewMode, setBoardViewMode] = useState("kanban");
@@ -1780,26 +1782,40 @@ export default function App() {
 
   useEffect(() => {
     if (!key) {
+      dataLoadSucceededRef.current = false;
       setDataLoading(false);
       return;
     }
+    dataLoadSucceededRef.current = false;
     const headers = { "X-Scout-Key": key, Authorization: `Bearer ${key}` };
     fetch((API_BASE || "") + "/api/data", { headers })
       .then((res) => {
+        // #region agent log
+        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data status", data: { hypothesisId: "H1", source: "useEffect-key", status: res.status, apiBaseLen: (API_BASE || "").length, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
         if (res.status === 401) {
           return null;
         }
         return res.json();
       })
       .then((data) => {
+        // #region agent log
+        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data body", data: { hypothesisId: "H2", source: "useEffect-key", hasData: !!data, jobsLen: Array.isArray(data?.jobs) ? data.jobs.length : -1, companiesLen: Array.isArray(data?.companies) ? data.companies.length : -1, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
         if (!data) return;
+        dataLoadSucceededRef.current = true;
         let jobsList = Array.isArray(data.jobs) ? data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })) : [];
         let companiesList = Array.isArray(data.companies) ? data.companies : [];
         const { companies: dedupedCompanies, jobs: dedupedJobs } = dedupeCompaniesAndJobs(companiesList, jobsList);
         setCompanies(dedupedCompanies);
         setJobs(dedupedJobs);
       })
-      .catch(() => {})
+      .catch((err) => {
+        dataLoadSucceededRef.current = false;
+        // #region agent log
+        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data catch", data: { hypothesisId: "H3", source: "useEffect-key", err: String(err?.message || err) }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
+      })
       .finally(() => setDataLoading(false));
   }, [key]);
 
@@ -1814,6 +1830,10 @@ export default function App() {
 
   const saveDataToServer = useCallback(() => {
     if (!key) return;
+    if (!dataLoadSucceededRef.current && jobs.length === 0 && companies.length === 0) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:saveDataToServer", message: "POST /api/data debounced save", data: { hypothesisId: "H5", jobsLen: jobs?.length ?? -1, companiesLen: companies?.length ?? -1, dataLoading, loadOk: dataLoadSucceededRef.current, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     const headers = {
       "Content-Type": "application/json",
       "X-Scout-Key": key,
@@ -1835,6 +1855,7 @@ export default function App() {
   useEffect(() => {
     if (!key) return;
     const onBeforeUnload = () => {
+      if (!dataLoadSucceededRef.current && jobs.length === 0 && companies.length === 0) return;
       const payload = JSON.stringify({ key, jobs, companies });
       navigator.sendBeacon?.((API_BASE || "") + "/api/data", new Blob([payload], { type: "application/json" }));
     };
@@ -1843,6 +1864,7 @@ export default function App() {
   }, [key, jobs, companies]);
 
   const handleLogout = () => {
+    dataLoadSucceededRef.current = false;
     localStorage.removeItem(SCOUT_KEY_STORAGE);
     setKey(null);
     setWorkspaceEmail(null);
@@ -1856,22 +1878,6 @@ export default function App() {
   const onKeyReady = useCallback((newKey) => {
     setKey(newKey);
     setDataLoading(true);
-    const headers = { "X-Scout-Key": newKey, Authorization: `Bearer ${newKey}` };
-    fetch((API_BASE || "") + "/api/data", { headers })
-      .then((r) => {
-        if (r.status === 401) return null;
-        return r.json();
-      })
-      .then((data) => {
-        if (!data) return;
-        let jobsList = Array.isArray(data.jobs) ? data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })) : [];
-        let companiesList = Array.isArray(data.companies) ? data.companies : [];
-        const { companies: dedupedCompanies, jobs: dedupedJobs } = dedupeCompaniesAndJobs(companiesList, jobsList);
-        setCompanies(dedupedCompanies);
-        setJobs(dedupedJobs);
-      })
-      .catch(() => {})
-      .finally(() => setDataLoading(false));
   }, []);
 
   const saveRecoveryEmail = async () => {
