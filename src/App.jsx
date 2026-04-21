@@ -1790,18 +1790,12 @@ export default function App() {
     const headers = { "X-Scout-Key": key, Authorization: `Bearer ${key}` };
     fetch((API_BASE || "") + "/api/data", { headers })
       .then((res) => {
-        // #region agent log
-        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data status", data: { hypothesisId: "H1", source: "useEffect-key", status: res.status, apiBaseLen: (API_BASE || "").length, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
         if (res.status === 401) {
           return null;
         }
         return res.json();
       })
       .then((data) => {
-        // #region agent log
-        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data body", data: { hypothesisId: "H2", source: "useEffect-key", hasData: !!data, jobsLen: Array.isArray(data?.jobs) ? data.jobs.length : -1, companiesLen: Array.isArray(data?.companies) ? data.companies.length : -1, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
         if (!data) return;
         dataLoadSucceededRef.current = true;
         let jobsList = Array.isArray(data.jobs) ? data.jobs.map(j => ({ ...j, status: (j.status || "interested").toLowerCase() })) : [];
@@ -1810,11 +1804,8 @@ export default function App() {
         setCompanies(dedupedCompanies);
         setJobs(dedupedJobs);
       })
-      .catch((err) => {
+      .catch(() => {
         dataLoadSucceededRef.current = false;
-        // #region agent log
-        fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:useEffect-key", message: "GET /api/data catch", data: { hypothesisId: "H3", source: "useEffect-key", err: String(err?.message || err) }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
       })
       .finally(() => setDataLoading(false));
   }, [key]);
@@ -1831,9 +1822,6 @@ export default function App() {
   const saveDataToServer = useCallback(() => {
     if (!key) return;
     if (!dataLoadSucceededRef.current && jobs.length === 0 && companies.length === 0) return;
-    // #region agent log
-    fetch("http://127.0.0.1:7667/ingest/72f8a31b-7cc3-4168-9bf9-a0f73081ee50", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c98987" }, body: JSON.stringify({ sessionId: "c98987", location: "App.jsx:saveDataToServer", message: "POST /api/data debounced save", data: { hypothesisId: "H5", jobsLen: jobs?.length ?? -1, companiesLen: companies?.length ?? -1, dataLoading, loadOk: dataLoadSucceededRef.current, keySuffix: key ? key.slice(-4) : null }, timestamp: Date.now() }) }).catch(() => {});
-    // #endregion
     const headers = {
       "Content-Type": "application/json",
       "X-Scout-Key": key,
