@@ -177,9 +177,44 @@ function IntensityDots({ value, T }) {
   );
 }
 
-function InterviewDifficultySection({ job, companyName, loading, error, onEstimate, T, css, isDark }) {
+function InterviewDifficultySection({ job, companyName, loading, error, onEstimate, onUpdate, T, css, isDark }) {
   const data = job?.interviewDifficulty || null;
   const hasData = !!(data && (data.intensity != null || data.summary || (data.stages || []).length));
+  const [editing, setEditing] = useState(null); // 'rounds' | 'stages' | 'summary' | null
+  const [draft, setDraft] = useState("");
+  const editRef = useRef(null);
+  useEffect(() => {
+    if (editing) editRef.current?.focus();
+  }, [editing]);
+  const startEdit = (field, initial) => {
+    if (!onUpdate) return;
+    setDraft(initial ?? "");
+    setEditing(field);
+  };
+  const commit = () => {
+    if (!editing || !onUpdate) { setEditing(null); return; }
+    if (editing === "stages") {
+      const lines = draft.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8);
+      onUpdate({ stages: lines });
+    } else if (editing === "rounds") {
+      onUpdate({ rounds: draft.trim() });
+    } else if (editing === "summary") {
+      onUpdate({ summary: draft.trim() });
+    }
+    setEditing(null);
+  };
+  const cancel = () => setEditing(null);
+  const editableHover = (e) => { e.currentTarget.style.borderColor = T.border; };
+  const editableLeave = (e) => { e.currentTarget.style.borderColor = "transparent"; };
+  const editableBox = {
+    cursor: onUpdate ? "pointer" : "default",
+    border: "1px solid transparent",
+    borderRadius: 4,
+    padding: "2px 6px",
+    margin: "-2px -6px",
+    transition: "border-color 0.15s",
+  };
+  const inputBase = { ...css.input, width: "100%", padding: "6px 8px", borderRadius: 4 };
   const containerStyle = {
     marginBottom: 18,
     paddingBottom: 18,
@@ -278,21 +313,111 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
         </div>
       </div>
 
-      {(data.stages || []).length > 0 && (
-        <div style={{ marginBottom: data.summary ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>
-            Rounds{data.rounds ? ` · ${data.rounds}` : ""}
+      {((data.stages || []).length > 0 || editing === "stages" || editing === "rounds") && (
+        <div style={{ marginBottom: data.summary || editing === "summary" ? 12 : 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+            <span>Rounds</span>
+            {editing === "rounds" ? (
+              <input
+                ref={editRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); commit(); }
+                  if (e.key === "Escape") { e.preventDefault(); cancel(); }
+                }}
+                placeholder="e.g. 3-4"
+                style={{ ...inputBase, width: 80, fontSize: 13, fontWeight: 600, color: T.textSec, padding: "2px 6px" }}
+              />
+            ) : (
+              <span
+                onClick={onUpdate ? () => startEdit("rounds", data.rounds || "") : undefined}
+                onMouseEnter={onUpdate ? editableHover : undefined}
+                onMouseLeave={onUpdate ? editableLeave : undefined}
+                style={editableBox}
+                title={onUpdate ? "Click to edit" : undefined}
+              >
+                {data.rounds ? `· ${data.rounds}` : (onUpdate ? "· add count" : "")}
+              </span>
+            )}
           </div>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: T.text, lineHeight: 1.6 }}>
-            {data.stages.map((s, i) => (
-              <li key={`${s}-${i}`} style={{ marginBottom: 2 }}>{s}</li>
-            ))}
-          </ul>
+          {editing === "stages" ? (
+            <textarea
+              ref={editRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
+                if (e.key === "Escape") { e.preventDefault(); cancel(); }
+              }}
+              placeholder="One stage per line"
+              rows={Math.max(3, draft.split("\n").length)}
+              style={{ ...inputBase, fontSize: 13, lineHeight: 1.6, minHeight: 80, resize: "vertical" }}
+            />
+          ) : (data.stages || []).length > 0 ? (
+            <ul
+              onClick={onUpdate ? () => startEdit("stages", (data.stages || []).join("\n")) : undefined}
+              onMouseEnter={onUpdate ? editableHover : undefined}
+              onMouseLeave={onUpdate ? editableLeave : undefined}
+              style={{ ...editableBox, margin: "-2px -6px", paddingLeft: 24, paddingTop: 2, paddingBottom: 2, fontSize: 13, color: T.text, lineHeight: 1.6, listStylePosition: "outside" }}
+              title={onUpdate ? "Click to edit" : undefined}
+            >
+              {data.stages.map((s, i) => (
+                <li key={`${s}-${i}`} style={{ marginBottom: 2 }}>{s}</li>
+              ))}
+            </ul>
+          ) : onUpdate ? (
+            <div
+              onClick={() => startEdit("stages", "")}
+              onMouseEnter={editableHover}
+              onMouseLeave={editableLeave}
+              style={{ ...editableBox, fontSize: 12, color: T.textMuted }}
+            >
+              Click to add stages…
+            </div>
+          ) : null}
         </div>
       )}
 
-      {data.summary && (
-        <p style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: 0 }}>{data.summary}</p>
+      {(data.summary || editing === "summary") && (
+        editing === "summary" ? (
+          <textarea
+            ref={editRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
+              if (e.key === "Escape") { e.preventDefault(); cancel(); }
+            }}
+            placeholder="Summary of what to expect"
+            rows={Math.max(3, Math.min(8, draft.split("\n").length + 1))}
+            style={{ ...inputBase, fontSize: 12.5, lineHeight: 1.55, color: T.textSec, minHeight: 70, resize: "vertical" }}
+          />
+        ) : (
+          <p
+            onClick={onUpdate ? () => startEdit("summary", data.summary || "") : undefined}
+            onMouseEnter={onUpdate ? editableHover : undefined}
+            onMouseLeave={onUpdate ? editableLeave : undefined}
+            style={{ ...editableBox, fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: "-2px -6px" }}
+            title={onUpdate ? "Click to edit" : undefined}
+          >
+            {data.summary}
+          </p>
+        )
+      )}
+      {!data.summary && !editing && onUpdate && (
+        <div
+          onClick={() => startEdit("summary", "")}
+          onMouseEnter={editableHover}
+          onMouseLeave={editableLeave}
+          style={{ ...editableBox, fontSize: 12, color: T.textMuted }}
+        >
+          Click to add a summary…
+        </div>
       )}
       {error && (
         <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
@@ -4547,6 +4672,20 @@ export default function App() {
                 const coName = (companies.find((c) => c.id === activeJob.companyId)?.name) || "";
                 if (!coName || !activeJob.title) return;
                 fetchAndStoreInterviewDifficulty(activeJob.id, coName, activeJob.title, { refresh });
+              }}
+              onUpdate={(patch) => {
+                setJobs((prev) => prev.map((j) => {
+                  if (j.id !== activeJob.id) return j;
+                  const base = j.interviewDifficulty || { intensity: null, rounds: "", timeline: "", caseStudy: false, stages: [], summary: "" };
+                  return {
+                    ...j,
+                    interviewDifficulty: {
+                      ...base,
+                      ...patch,
+                      editedAt: new Date().toISOString(),
+                    },
+                  };
+                }));
               }}
               T={T}
               css={css}
