@@ -313,36 +313,9 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
         </div>
       </div>
 
-      {((data.stages || []).length > 0 || editing === "stages" || editing === "rounds") && (
+      {((data.stages || []).length > 0 || editing === "stages") && (
         <div style={{ marginBottom: data.summary || editing === "summary" ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-            <span>Rounds</span>
-            {editing === "rounds" ? (
-              <input
-                ref={editRef}
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); commit(); }
-                  if (e.key === "Escape") { e.preventDefault(); cancel(); }
-                }}
-                placeholder="e.g. 3-4"
-                style={{ ...inputBase, width: 80, fontSize: 13, fontWeight: 600, color: T.textSec, padding: "2px 6px" }}
-              />
-            ) : (
-              <span
-                onClick={onUpdate ? () => startEdit("rounds", data.rounds || "") : undefined}
-                onMouseEnter={onUpdate ? editableHover : undefined}
-                onMouseLeave={onUpdate ? editableLeave : undefined}
-                style={editableBox}
-                title={onUpdate ? "Click to edit" : undefined}
-              >
-                {data.rounds ? `· ${data.rounds}` : (onUpdate ? "· add count" : "")}
-              </span>
-            )}
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Rounds</div>
           {editing === "stages" ? (
             <textarea
               ref={editRef}
