@@ -62,6 +62,15 @@ async function setCompanyResearch(cacheKey, data) {
   await getRedis().hset("company-research", { [cacheKey]: JSON.stringify(data) });
 }
 
+async function getInterviewDifficulty(cacheKey) {
+  const data = await getRedis().hget("interview-difficulty", cacheKey);
+  if (!data) return null;
+  return typeof data === "string" ? JSON.parse(data) : data;
+}
+async function setInterviewDifficulty(cacheKey, data) {
+  await getRedis().hset("interview-difficulty", { [cacheKey]: JSON.stringify(data) });
+}
+
 // ---------------------------------------------------------------------------
 // Constants & helpers (ported from server/index.js)
 // ---------------------------------------------------------------------------
@@ -123,6 +132,13 @@ function normalizeDomain(website) {
 function normalizeCompanyKey(name) {
   if (!name || typeof name !== "string") return "";
   return name.trim().toLowerCase().replace(/\s+/g, "");
+}
+function normalizeRoleKey(title) {
+  if (!title || typeof title !== "string") return "";
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+function interviewCacheKey(companyName, title) {
+  return `${normalizeCompanyKey(companyName)}|${normalizeRoleKey(title)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +299,38 @@ async function fetchCompanyResearchViaClaude(companyName) {
       designLeaders: parsed.designLeaders ?? "", culture: parsed.culture ?? "", website: parsed.website ?? "",
     };
   } catch (e) { console.warn("Company research failed:", e.message); return null; }
+}
+
+const INTERVIEW_DIFFICULTY_SYSTEM = `You estimate the interview process for a specific role at a specific company. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
+{"intensity":1-5 integer (1 = light/quick, 5 = grueling/many rounds),"rounds":"e.g. '3-4' or '5+'","timeline":"end-to-end e.g. '2-3 weeks' or '4-6 weeks'","caseStudy":true/false (take-home or live design/coding exercise likely?),"stages":["short label per stage, 3-6 items, e.g. 'Recruiter screen','Hiring manager','Take-home design exercise','Onsite (4 panels)','Exec/bar-raiser'"],"summary":"1-2 plain sentences on what to expect for THIS role at THIS company (mention craft, collaboration, system design, case study, or whatever's notable)."}
+Rules:
+- Base estimates on what's publicly typical for the company (Big Tech vs. early startup vs. agency) AND the seniority of the role (junior/mid/senior/staff/principal).
+- If the company is unknown, default to a reasonable startup process (3 rounds, 2-3 weeks, intensity 2).
+- NEVER fabricate insider details. Keep it generic but useful.`;
+
+async function fetchInterviewDifficultyViaClaude(companyName, title) {
+  if (!ANTHROPIC_KEY || !companyName || !title) return null;
+  try {
+    const text = await handleClaudeProxy({
+      userMsg: `Estimate the interview process for the role "${title}" at "${companyName}". Consider both the company's typical interview style and the seniority/discipline implied by the title.`,
+      systemMsg: INTERVIEW_DIFFICULTY_SYSTEM,
+      useWebSearch: false,
+    });
+    const parsed = JSON.parse((text || "").replace(/```json|```/g, "").trim());
+    const intensity = Number(parsed.intensity);
+    return {
+      intensity: Number.isFinite(intensity) ? Math.min(5, Math.max(1, Math.round(intensity))) : null,
+      rounds: typeof parsed.rounds === "string" ? parsed.rounds : "",
+      timeline: typeof parsed.timeline === "string" ? parsed.timeline : "",
+      caseStudy: parsed.caseStudy === true,
+      stages: Array.isArray(parsed.stages) ? parsed.stages.filter(s => typeof s === "string" && s.trim()).slice(0, 8) : [],
+      summary: typeof parsed.summary === "string" ? parsed.summary : "",
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (e) {
+    console.warn("Interview difficulty failed:", e.message);
+    return null;
+  }
 }
 
 async function fetchBrandColorViaClaude(domain, companyName) {
@@ -928,6 +976,24 @@ export default async function handler(req, res) {
       const data = await fetchCompanyResearchViaClaude(companyName);
       if (data) await setCompanyResearch(cacheKey, data);
       return send(res, 200, data || { name: companyName, description: "", size: "", stage: "", designTeamSize: "", designLeaders: "", culture: "", website: "" });
+    }
+
+    // ---- Interview difficulty estimate (cached by normalized company + role) ----
+    if (pathStr === "/api/interview-difficulty" && req.method === "GET") {
+      const key = getScoutKey(req);
+      if (!key) return send(res, 401, { error: "Scout key required" });
+      const companyName = (url.searchParams.get("companyName") || "").trim();
+      const title = (url.searchParams.get("title") || "").trim();
+      if (!companyName || !title) return send(res, 400, { error: "companyName and title required" });
+      const refresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
+      const cacheKey = interviewCacheKey(companyName, title);
+      if (!refresh) {
+        const cached = await getInterviewDifficulty(cacheKey);
+        if (cached) return send(res, 200, { ...cached, cached: true });
+      }
+      const data = await fetchInterviewDifficultyViaClaude(companyName, title);
+      if (data) await setInterviewDifficulty(cacheKey, data);
+      return send(res, 200, data || { intensity: null, rounds: "", timeline: "", caseStudy: false, stages: [], summary: "", cached: false });
     }
 
     // ---- Refine job (pasted text only; no generic Claude proxy) ----

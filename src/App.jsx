@@ -157,6 +157,109 @@ function EditableField({
   );
 }
 
+function IntensityDots({ value, T }) {
+  const v = Math.min(5, Math.max(0, Math.round(Number(value) || 0)));
+  const colors = ["#a3a3a3", "#84cc16", "#facc15", "#fb923c", "#f87171", "#dc2626"];
+  const fill = colors[v] || colors[0];
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`Intensity ${v} of 5`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: i <= v ? fill : T.border,
+            transition: "background 0.15s",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, css, isDark }) {
+  const data = job?.interviewDifficulty || null;
+  const hasData = !!(data && (data.intensity != null || data.summary || (data.stages || []).length));
+  const containerStyle = {
+    marginBottom: 18,
+    paddingBottom: 18,
+    borderBottom: `1px solid ${T.border}`,
+  };
+  const labelRow = (
+    <label style={{ ...css.label, display: "block", marginBottom: 8 }}>Interview process</label>
+  );
+
+  if (loading && !hasData) {
+    return (
+      <div style={containerStyle}>
+        {labelRow}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.textMuted, fontSize: 12 }}>
+          <Spinner size={12} />
+          Estimating interview process for {companyName || "this role"}…
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasData) {
+    const canEstimate = !!(companyName && job?.title);
+    return (
+      <div style={containerStyle}>
+        {labelRow}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: T.textMuted }}>
+            No estimate yet. Use AI to guess the process length and intensity for this role.
+          </span>
+          <button
+            type="button"
+            onClick={() => onEstimate(false)}
+            disabled={!canEstimate}
+            style={{
+              ...css.btn("sec"),
+              fontSize: 12,
+              padding: "5px 11px",
+              opacity: canEstimate ? 1 : 0.5,
+              cursor: canEstimate ? "pointer" : "not-allowed",
+            }}
+          >
+            Estimate interview process
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={containerStyle}>
+      {labelRow}
+      <div style={{ marginBottom: (data.stages || []).length || data.summary ? 12 : 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Intensity</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IntensityDots value={data.intensity} T={T} />
+          <span style={{ fontSize: 12, color: T.textSec }}>{data.intensity != null ? `${data.intensity}/5` : "—"}</span>
+        </div>
+      </div>
+
+      {(data.stages || []).length > 0 && (
+        <div style={{ marginBottom: data.summary ? 12 : 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>
+            Rounds{data.rounds ? ` · ${data.rounds}` : ""}
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: T.text, lineHeight: 1.6 }}>
+            {data.stages.map((s, i) => (
+              <li key={`${s}-${i}`} style={{ marginBottom: 2 }}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.summary && (
+        <p style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: 0 }}>{data.summary}</p>
+      )}
+    </div>
+  );
+}
+
 const STATUSES = [
   { id: "interested", label: "Interested", color: "#818cf8" },
   { id: "applied", label: "Applied", color: "#fb923c" },
@@ -242,6 +345,27 @@ const SEED_JOBS = [
 
 /** Set to true to skip AI API calls for company research (companies page + auto-research on new company). */
 const PAUSE_COMPANY_AI = false;
+
+async function fetchInterviewDifficulty(companyName, title, options = {}) {
+  if (!companyName || !title) return null;
+  const params = new URLSearchParams({ companyName, title });
+  if (options.refresh) params.set("refresh", "1");
+  const res = await fetch(
+    (API_BASE || "") + "/api/interview-difficulty?" + params.toString(),
+    { headers: getScoutHeaders() }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || res.statusText || "Request failed");
+  return {
+    intensity: typeof data.intensity === "number" ? data.intensity : null,
+    rounds: data.rounds ?? "",
+    timeline: data.timeline ?? "",
+    caseStudy: data.caseStudy === true,
+    stages: Array.isArray(data.stages) ? data.stages : [],
+    summary: data.summary ?? "",
+    generatedAt: data.generatedAt ?? new Date().toISOString(),
+  };
+}
 
 async function researchCompanyByName(companyName, options = {}) {
   const empty = {
@@ -2204,7 +2328,8 @@ export default function App() {
       }
     }
     const { _aiAssisted, _aiFields, ...cleanJobData } = jobData;
-    setJobs(p => [...p, { id: uid(), companyId, ...cleanJobData, status: newJobStatus, priority: jobPriority, notes: [], link: jobLink || "", applicationDate: "", contact: "", addedAt: new Date().toISOString() }]);
+    const newJobId = uid();
+    setJobs(p => [...p, { id: newJobId, companyId, ...cleanJobData, status: newJobStatus, priority: jobPriority, notes: [], link: jobLink || "", applicationDate: "", contact: "", addedAt: new Date().toISOString() }]);
     setModal(null); setJobDesc(""); setJobLink(""); setJobData(null); setJobCoId(""); setJobInputMode("url"); setJobPriority("medium"); setNewJobStatus("interested"); setFetchError(null); setImportStep(null);
     resetManualJobForm();
     if (createdNewCompany) {
@@ -2213,6 +2338,10 @@ export default function App() {
           setCompanies((p) => p.map((c) => (c.id === companyId ? { ...c, ...data, id: c.id } : c)));
         })
         .catch((e) => console.error("Company research failed:", e));
+    }
+    const companyNameForEstimate = jobData.companyName || (companies.find((c) => c.id === companyId)?.name);
+    if (companyNameForEstimate && cleanJobData.title) {
+      fetchAndStoreInterviewDifficulty(newJobId, companyNameForEstimate, cleanJobData.title);
     }
   };
 
@@ -2238,10 +2367,12 @@ export default function App() {
       }
     }
     if (!companyId) return;
+    const newJobId = uid();
+    const titleClean = manualTitle.trim();
     setJobs(p => [...p, {
-      id: uid(),
+      id: newJobId,
       companyId,
-      title: manualTitle.trim(),
+      title: titleClean,
       location: manualLocation.trim() || undefined,
       salary: manualSalary.trim() || undefined,
       summary: manualSummary.trim() || undefined,
@@ -2263,11 +2394,33 @@ export default function App() {
         })
         .catch((e) => console.error("Company research failed:", e));
     }
+    if (companyName && titleClean) {
+      fetchAndStoreInterviewDifficulty(newJobId, companyName, titleClean);
+    }
   };
 
   const setJobPriorityLevel = (jobId, priority) => {
     setJobs((p) => p.map((j) => (j.id === jobId ? { ...j, priority } : j)));
   };
+
+  const [interviewDifficultyLoading, setInterviewDifficultyLoading] = useState({});
+  const fetchAndStoreInterviewDifficulty = useCallback(async (jobId, companyName, title, options = {}) => {
+    if (!jobId || !companyName || !title) return;
+    setInterviewDifficultyLoading((p) => ({ ...p, [jobId]: true }));
+    try {
+      const data = await fetchInterviewDifficulty(companyName, title, options);
+      if (data) {
+        setJobs((p) => p.map((j) => (j.id === jobId ? { ...j, interviewDifficulty: data } : j)));
+      }
+    } catch (e) {
+      console.error("Interview difficulty fetch failed:", e);
+    } finally {
+      setInterviewDifficultyLoading((p) => {
+        const { [jobId]: _, ...rest } = p;
+        return rest;
+      });
+    }
+  }, []);
 
   const [rejectedNoteModal, setRejectedNoteModal] = useState(null); // { jobId, previousStage, stage, text }
 
@@ -4301,7 +4454,7 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 16, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.border}` }}>
+            <div style={{ display: "flex", gap: 16, marginBottom: 18 }}>
               <div style={{ flex: 1 }}>
                 <label style={css.label}>Application Date</label>
                 <EditableField
@@ -4334,6 +4487,20 @@ export default function App() {
                 />
               </div>
             </div>
+
+            <InterviewDifficultySection
+              job={activeJob}
+              companyName={(companies.find((c) => c.id === activeJob.companyId)?.name) || ""}
+              loading={!!interviewDifficultyLoading[activeJob.id]}
+              onEstimate={(refresh) => {
+                const coName = (companies.find((c) => c.id === activeJob.companyId)?.name) || "";
+                if (!coName || !activeJob.title) return;
+                fetchAndStoreInterviewDifficulty(activeJob.id, coName, activeJob.title, { refresh });
+              }}
+              T={T}
+              css={css}
+              isDark={isDark}
+            />
 
             <div style={{ marginBottom: 18 }}>
               <label style={css.label}>Priority</label>
