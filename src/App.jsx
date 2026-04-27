@@ -188,6 +188,11 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
   const labelRow = (
     <label style={{ ...css.label, display: "block", marginBottom: 8 }}>Interview process</label>
   );
+  const aiDisclaimer = (
+    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>
+      Powered by AI, may not be 100% accurate
+    </div>
+  );
 
   if (loading && !hasData) {
     return (
@@ -197,6 +202,7 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
           <Spinner size={12} />
           Estimating interview process for {companyName || "this role"}…
         </div>
+        {aiDisclaimer}
       </div>
     );
   }
@@ -225,6 +231,7 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
             Estimate interview process
           </button>
         </div>
+        {aiDisclaimer}
       </div>
     );
   }
@@ -256,6 +263,7 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
       {data.summary && (
         <p style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: 0 }}>{data.summary}</p>
       )}
+      {aiDisclaimer}
     </div>
   );
 }
