@@ -177,7 +177,7 @@ function IntensityDots({ value, T }) {
   );
 }
 
-function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, css, isDark }) {
+function InterviewDifficultySection({ job, companyName, loading, error, onEstimate, T, css, isDark }) {
   const data = job?.interviewDifficulty || null;
   const hasData = !!(data && (data.intensity != null || data.summary || (data.stages || []).length));
   const containerStyle = {
@@ -245,7 +245,7 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
         {labelRow}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: T.textMuted }}>
-            No estimate yet. Use AI to guess the process length and intensity for this role.
+            {error ? `Estimate failed: ${error}` : "No estimate yet. Use AI to guess the process length and intensity for this role."}
           </span>
           <button
             type="button"
@@ -259,7 +259,7 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
               cursor: canEstimate ? "pointer" : "not-allowed",
             }}
           >
-            Estimate interview process
+            {error ? "Try again" : "Estimate interview process"}
           </button>
         </div>
         {aiDisclaimer}
@@ -293,6 +293,11 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
 
       {data.summary && (
         <p style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: 0 }}>{data.summary}</p>
+      )}
+      {error && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+          Re-estimate failed: {error}
+        </div>
       )}
       {aiDisclaimer}
     </div>
@@ -2443,9 +2448,14 @@ export default function App() {
   };
 
   const [interviewDifficultyLoading, setInterviewDifficultyLoading] = useState({});
+  const [interviewDifficultyError, setInterviewDifficultyError] = useState({});
   const fetchAndStoreInterviewDifficulty = useCallback(async (jobId, companyName, title, options = {}) => {
     if (!jobId || !companyName || !title) return;
     setInterviewDifficultyLoading((p) => ({ ...p, [jobId]: true }));
+    setInterviewDifficultyError((p) => {
+      const { [jobId]: _, ...rest } = p;
+      return rest;
+    });
     try {
       const data = await fetchInterviewDifficulty(companyName, title, options);
       if (data) {
@@ -2453,6 +2463,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("Interview difficulty fetch failed:", e);
+      setInterviewDifficultyError((p) => ({ ...p, [jobId]: e?.message || "AI estimate failed" }));
     } finally {
       setInterviewDifficultyLoading((p) => {
         const { [jobId]: _, ...rest } = p;
@@ -4531,6 +4542,7 @@ export default function App() {
               job={activeJob}
               companyName={(companies.find((c) => c.id === activeJob.companyId)?.name) || ""}
               loading={!!interviewDifficultyLoading[activeJob.id]}
+              error={interviewDifficultyError[activeJob.id] || ""}
               onEstimate={(refresh) => {
                 const coName = (companies.find((c) => c.id === activeJob.companyId)?.name) || "";
                 if (!coName || !activeJob.title) return;

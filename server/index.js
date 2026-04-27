@@ -189,29 +189,39 @@ Rules:
 - NEVER invent named interviewers, internal team names, or specific exercise titles. Keep stage labels generic but accurate.
 - If reports conflict, choose the most common pattern.`;
 
+function extractJsonObject(text) {
+  if (!text || typeof text !== "string") return null;
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+  try { return JSON.parse(cleaned.slice(first, last + 1)); } catch { return null; }
+}
+
 async function fetchInterviewDifficultyViaClaude(companyName, title) {
-  if (!ANTHROPIC_KEY || !companyName || !title) return null;
-  try {
-    const text = await handleClaudeProxy({
-      userMsg: `Research and estimate the interview process for the role "${title}" at "${companyName}". Use web_search to look up real candidate reports (Glassdoor, Blind, Levels.fyi, blog posts, the careers page) before answering. Match the seniority and discipline implied by the title.`,
-      systemMsg: INTERVIEW_DIFFICULTY_SYSTEM,
-      useWebSearch: true,
-    });
-    const parsed = JSON.parse((text || "").replace(/```json|```/g, "").trim());
-    const intensity = Number(parsed.intensity);
-    return {
-      intensity: Number.isFinite(intensity) ? Math.min(5, Math.max(1, Math.round(intensity))) : null,
-      rounds: typeof parsed.rounds === "string" ? parsed.rounds : "",
-      timeline: typeof parsed.timeline === "string" ? parsed.timeline : "",
-      caseStudy: parsed.caseStudy === true,
-      stages: Array.isArray(parsed.stages) ? parsed.stages.filter(s => typeof s === "string" && s.trim()).slice(0, 8) : [],
-      summary: typeof parsed.summary === "string" ? parsed.summary : "",
-      generatedAt: new Date().toISOString(),
-    };
-  } catch (e) {
-    console.warn("Interview difficulty Claude call failed:", e.message);
-    return null;
+  if (!ANTHROPIC_KEY) throw new Error("Missing ANTHROPIC_API_KEY on server");
+  if (!companyName || !title) throw new Error("companyName and title required");
+  const text = await handleClaudeProxy({
+    userMsg: `Research and estimate the interview process for the role "${title}" at "${companyName}". Use web_search to look up real candidate reports (Glassdoor, Blind, Levels.fyi, blog posts, the careers page) before answering. Match the seniority and discipline implied by the title. Respond with ONLY the JSON object, no prose, no citations, no markdown fences.`,
+    systemMsg: INTERVIEW_DIFFICULTY_SYSTEM,
+    useWebSearch: true,
+  });
+  const parsed = extractJsonObject(text);
+  if (!parsed) {
+    const preview = (text || "").slice(0, 200).replace(/\s+/g, " ");
+    throw new Error(`AI did not return valid JSON. Preview: ${preview}`);
   }
+  const intensity = Number(parsed.intensity);
+  return {
+    intensity: Number.isFinite(intensity) ? Math.min(5, Math.max(1, Math.round(intensity))) : null,
+    rounds: typeof parsed.rounds === "string" ? parsed.rounds : "",
+    timeline: typeof parsed.timeline === "string" ? parsed.timeline : "",
+    caseStudy: parsed.caseStudy === true,
+    stages: Array.isArray(parsed.stages) ? parsed.stages.filter(s => typeof s === "string" && s.trim()).slice(0, 8) : [],
+    summary: typeof parsed.summary === "string" ? parsed.summary : "",
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 /** Ask Claude for primary brand color; returns hex or null. */
@@ -933,7 +943,7 @@ async function handleClaudeProxy(body) {
   const model = useWebSearch ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
   const apiBody = {
     model,
-    max_tokens: 2000,
+    max_tokens: useWebSearch ? 4096 : 2000,
     system: systemMsg,
     messages: [{ role: "user", content: userMsg }],
   };
@@ -1449,12 +1459,17 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { ...cache[cacheKey], cached: true });
         return;
       }
-      const data = await fetchInterviewDifficultyViaClaude(companyName, title);
-      if (data) {
-        cache[cacheKey] = data;
-        await writeInterviewDifficulty(cache);
+      try {
+        const data = await fetchInterviewDifficultyViaClaude(companyName, title);
+        if (data) {
+          cache[cacheKey] = data;
+          await writeInterviewDifficulty(cache);
+        }
+        send(res, 200, data);
+      } catch (e) {
+        console.warn("interview-difficulty endpoint failed:", e.message);
+        send(res, 502, { error: e.message || "AI estimate failed" });
       }
-      send(res, 200, data || { intensity: null, rounds: "", timeline: "", caseStudy: false, stages: [], summary: "", cached: false });
       return;
     }
 
