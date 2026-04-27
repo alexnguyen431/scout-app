@@ -180,20 +180,22 @@ function normalizeDomain(website) {
   return s || "";
 }
 
-const INTERVIEW_DIFFICULTY_SYSTEM = `You estimate the interview process for a specific role at a specific company. Return ONLY raw JSON (no markdown, no backticks) with these exact fields:
-{"intensity":1-5 integer (1 = light/quick, 5 = grueling/many rounds),"rounds":"e.g. '3-4' or '5+'","timeline":"end-to-end e.g. '2-3 weeks' or '4-6 weeks'","caseStudy":true/false (take-home or live design/coding exercise likely?),"stages":["short label per stage, 3-6 items, e.g. 'Recruiter screen','Hiring manager','Take-home design exercise','Onsite (4 panels)','Exec/bar-raiser'"],"summary":"1-2 plain sentences on what to expect for THIS role at THIS company (mention craft, collaboration, system design, case study, or whatever's notable)."}
+const INTERVIEW_DIFFICULTY_SYSTEM = `You estimate the interview process for a specific role at a specific company, GROUNDED IN ACTUAL RESEARCH from the web (Glassdoor, Blind, Levels.fyi, the company's careers page, employee blog posts, candidate write-ups). Use web_search to find first-hand interview reports for THIS company and, if possible, this exact role/discipline/seniority. Then return ONLY raw JSON (no markdown, no backticks) with these exact fields:
+{"intensity":1-5 integer (1 = light/quick, 5 = grueling/many rounds),"rounds":"e.g. '3-4' or '5+'","timeline":"end-to-end e.g. '2-3 weeks' or '4-6 weeks'","caseStudy":true/false (take-home or live design/coding exercise likely?),"stages":["short label per stage, 3-6 items, in chronological order, e.g. 'Recruiter screen','Hiring manager call','Take-home design exercise','Onsite (4 panels)','Bar-raiser/exec'"],"summary":"1-2 plain sentences on what to expect for THIS role at THIS company, mentioning anything notable (case studies, design challenges, system design rounds, leadership panels, etc.)."}
 Rules:
-- Base estimates on what's publicly typical for the company (Big Tech vs. early startup vs. agency) AND the seniority of the role (junior/mid/senior/staff/principal).
-- If the company is unknown, default to a reasonable startup process (3 rounds, 2-3 weeks, intensity 2).
-- NEVER fabricate insider details. Keep it generic but useful.`;
+- Prefer recent reports (last 1-2 years) over old ones.
+- Match seniority: a Staff/Principal role has different rounds than a junior/mid one.
+- If you cannot find specific info for the company, use what you find for similar companies of the same size/stage/industry, and lower intensity confidence accordingly.
+- NEVER invent named interviewers, internal team names, or specific exercise titles. Keep stage labels generic but accurate.
+- If reports conflict, choose the most common pattern.`;
 
 async function fetchInterviewDifficultyViaClaude(companyName, title) {
   if (!ANTHROPIC_KEY || !companyName || !title) return null;
   try {
     const text = await handleClaudeProxy({
-      userMsg: `Estimate the interview process for the role "${title}" at "${companyName}". Consider both the company's typical interview style and the seniority/discipline implied by the title.`,
+      userMsg: `Research and estimate the interview process for the role "${title}" at "${companyName}". Use web_search to look up real candidate reports (Glassdoor, Blind, Levels.fyi, blog posts, the careers page) before answering. Match the seniority and discipline implied by the title.`,
       systemMsg: INTERVIEW_DIFFICULTY_SYSTEM,
-      useWebSearch: false,
+      useWebSearch: true,
     });
     const parsed = JSON.parse((text || "").replace(/```json|```/g, "").trim());
     const intensity = Number(parsed.intensity);
@@ -1384,7 +1386,8 @@ const server = http.createServer(async (req, res) => {
       await ensureDataDir();
       await fs.writeFile(BRAND_COLORS_FILE, "{}", "utf8");
       await fs.writeFile(COMPANY_RESEARCH_FILE, "{}", "utf8");
-      send(res, 200, { cleared: ["brand_colors", "company_research"] });
+      await fs.writeFile(INTERVIEW_DIFFICULTY_FILE, "{}", "utf8");
+      send(res, 200, { cleared: ["brand_colors", "company_research", "interview_difficulty"] });
       return;
     }
 
