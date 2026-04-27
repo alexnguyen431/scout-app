@@ -180,14 +180,8 @@ function normalizeDomain(website) {
   return s || "";
 }
 
-const INTERVIEW_DIFFICULTY_SYSTEM = `You estimate the interview process for a specific role at a specific company, GROUNDED IN ACTUAL RESEARCH from the web (Glassdoor, Blind, Levels.fyi, the company's careers page, employee blog posts, candidate write-ups). Use web_search to find first-hand interview reports for THIS company and, if possible, this exact role/discipline/seniority. Then return ONLY raw JSON (no markdown, no backticks) with these exact fields:
-{"intensity":1-5 integer (1 = light/quick, 5 = grueling/many rounds),"rounds":"e.g. '3-4' or '5+'","timeline":"end-to-end e.g. '2-3 weeks' or '4-6 weeks'","caseStudy":true/false (take-home or live design/coding exercise likely?),"stages":["short label per stage, 3-6 items, in chronological order, e.g. 'Recruiter screen','Hiring manager call','Take-home design exercise','Onsite (4 panels)','Bar-raiser/exec'"],"summary":"1-2 plain sentences on what to expect for THIS role at THIS company, mentioning anything notable (case studies, design challenges, system design rounds, leadership panels, etc.)."}
-Rules:
-- Prefer recent reports (last 1-2 years) over old ones.
-- Match seniority: a Staff/Principal role has different rounds than a junior/mid one.
-- If you cannot find specific info for the company, use what you find for similar companies of the same size/stage/industry, and lower intensity confidence accordingly.
-- NEVER invent named interviewers, internal team names, or specific exercise titles. Keep stage labels generic but accurate.
-- If reports conflict, choose the most common pattern.`;
+const INTERVIEW_DIFFICULTY_SYSTEM = `Estimate the interview process for a specific role at a company, grounded in real candidate reports from the web (Glassdoor, Blind, Levels.fyi, careers pages). Use web_search before answering. Match the seniority implied by the title. Prefer recent reports. Don't invent specific names. Return ONLY raw JSON, no markdown:
+{"intensity":1-5 integer,"rounds":"e.g. '3-4'","timeline":"e.g. '2-3 weeks'","caseStudy":true|false,"stages":["3-6 short labels in order"],"summary":"1-2 sentences on what to expect for THIS role at THIS company"}`;
 
 function extractJsonObject(text) {
   if (!text || typeof text !== "string") return null;
@@ -203,7 +197,7 @@ async function fetchInterviewDifficultyViaClaude(companyName, title) {
   if (!ANTHROPIC_KEY) throw new Error("Missing ANTHROPIC_API_KEY on server");
   if (!companyName || !title) throw new Error("companyName and title required");
   const text = await handleClaudeProxy({
-    userMsg: `Research and estimate the interview process for the role "${title}" at "${companyName}". Use web_search to look up real candidate reports (Glassdoor, Blind, Levels.fyi, blog posts, the careers page) before answering. Match the seniority and discipline implied by the title. Respond with ONLY the JSON object, no prose, no citations, no markdown fences.`,
+    userMsg: `Role "${title}" at "${companyName}". Search the web (Glassdoor/Blind/Levels.fyi/careers page) for recent candidate reports, then return the JSON only.`,
     systemMsg: INTERVIEW_DIFFICULTY_SYSTEM,
     useWebSearch: true,
   });
@@ -948,26 +942,41 @@ async function handleClaudeProxy(body) {
     messages: [{ role: "user", content: userMsg }],
   };
   if (useWebSearch) {
-    apiBody.tools = [{ type: "web_search_20250305", name: "web_search" }];
+    apiBody.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }];
   }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(apiBody),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    const errMsg = data.error?.message || data.message || `HTTP ${res.status}`;
-    throw new Error(errMsg);
+  let attempt = 0;
+  while (true) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(apiBody),
+    });
+    if (res.status === 429 && attempt < 1) {
+      const retryAfterRaw = res.headers.get("retry-after");
+      const waitSec = Math.min(15, Math.max(1, Number(retryAfterRaw) || 8));
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      attempt++;
+      continue;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 429) {
+        const retryAfterRaw = res.headers.get("retry-after");
+        const waitSec = Number(retryAfterRaw) || 60;
+        throw new Error(`Anthropic rate limit hit. Try again in ~${waitSec}s.`);
+      }
+      const errMsg = data.error?.message || data.message || `HTTP ${res.status}`;
+      throw new Error(errMsg);
+    }
+    if (!data.content || !Array.isArray(data.content)) {
+      throw new Error("Invalid API response: no content");
+    }
+    return data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
   }
-  if (!data.content || !Array.isArray(data.content)) {
-    throw new Error("Invalid API response: no content");
-  }
-  return data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
 }
 
 function send(res, status, data) {
