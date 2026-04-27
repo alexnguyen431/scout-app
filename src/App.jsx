@@ -188,9 +188,41 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
   const labelRow = (
     <label style={{ ...css.label, display: "block", marginBottom: 8 }}>Interview process</label>
   );
+  const canEstimate = !!(companyName && job?.title);
   const aiDisclaimer = (
-    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>
-      Powered by AI, may not be 100% accurate
+    <div
+      style={{
+        marginTop: 10,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ fontSize: 11, color: T.textMuted }}>
+        Powered by AI, may not be 100% accurate
+      </div>
+      {hasData && (
+        <button
+          type="button"
+          onClick={() => onEstimate(true)}
+          disabled={!canEstimate || loading}
+          title="Force a fresh AI estimate (TEMP)"
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            fontSize: 11,
+            color: T.textMuted,
+            textDecoration: "underline",
+            cursor: canEstimate && !loading ? "pointer" : "not-allowed",
+            opacity: canEstimate && !loading ? 1 : 0.5,
+          }}
+        >
+          {loading ? "Re-estimating…" : "Re-estimate"}
+        </button>
+      )}
     </div>
   );
 
@@ -208,7 +240,6 @@ function InterviewDifficultySection({ job, companyName, loading, onEstimate, T, 
   }
 
   if (!hasData) {
-    const canEstimate = !!(companyName && job?.title);
     return (
       <div style={containerStyle}>
         {labelRow}
