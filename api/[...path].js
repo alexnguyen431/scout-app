@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
+import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
 
 // ---------------------------------------------------------------------------
 // Redis (Upstash) – replaces file-based data/ storage for serverless
@@ -123,6 +124,7 @@ const KNOWN_BRAND_COLORS_SERVER = {
   "linear.app": "#5E6AD2", "notion.so": "#000000",
   "instacart.com": "#43B02A", "via.transport": "#00C2FF",
   "doordash.com": "#FF3008", doordash: "#FF3008",
+  "superhuman.com": "#0f172a", superhuman: "#0f172a",
 };
 
 function normalizeDomain(website) {
@@ -338,6 +340,10 @@ function extractJsonObject(text) {
 }
 
 async function fetchInterviewDifficultyViaClaude(companyName, title) {
+  const overridden = getInterviewProcessOverride(companyName);
+  if (overridden) {
+    return { ...overridden, generatedAt: new Date().toISOString() };
+  }
   if (!ANTHROPIC_KEY) throw new Error("Missing ANTHROPIC_API_KEY on server");
   if (!companyName || !title) throw new Error("companyName and title required");
   const text = await handleClaudeProxy({
@@ -1024,6 +1030,10 @@ export default async function handler(req, res) {
       if (!companyName || !title) return send(res, 400, { error: "companyName and title required" });
       const refresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
       const cacheKey = interviewCacheKey(companyName, title);
+      const curated = getInterviewProcessOverride(companyName);
+      if (curated) {
+        return send(res, 200, { ...curated, generatedAt: new Date().toISOString(), curated: true });
+      }
       if (!refresh) {
         const cached = await getInterviewDifficulty(cacheKey);
         if (cached) return send(res, 200, { ...cached, cached: true });

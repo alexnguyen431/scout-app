@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import confetti from "canvas-confetti";
+import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
 
 const SCOUT_KEY_STORAGE = "scout-key";
 const API_BASE = (import.meta.env.VITE_API_URL ?? "")
@@ -178,7 +179,9 @@ function IntensityDots({ value, T }) {
 }
 
 function InterviewDifficultySection({ job, companyName, loading, error, onEstimate, onUpdate, T, css, isDark }) {
-  const data = job?.interviewDifficulty || null;
+  const raw = job?.interviewDifficulty || null;
+  const curated = companyName ? getInterviewProcessOverride(companyName) : null;
+  const data = raw?.editedAt ? raw : (curated || raw || null);
   const hasData = !!(data && (data.intensity != null || data.summary || (data.stages || []).length));
   const [editing, setEditing] = useState(null); // 'rounds' | 'stages' | 'summary' | null
   const [draft, setDraft] = useState("");
@@ -1067,6 +1070,7 @@ const KNOWN_BRAND_COLORS = {
   "kraken.com": "#5741D9",
   "thumbtack.com": "#009FD9",
   "doordash.com": "#FF3008",
+  "superhuman.com": "#0f172a",
 };
 /** Known brand colors by company name (when domain is missing). Lowercase, no spaces. */
 const KNOWN_BRAND_COLORS_BY_NAME = {
@@ -1074,6 +1078,7 @@ const KNOWN_BRAND_COLORS_BY_NAME = {
   kraken: "#5741D9",
   thumbtack: "#009FD9",
   doordash: "#FF3008",
+  superhuman: "#0f172a",
 };
 
 function normalizeDomain(website) {
@@ -4649,7 +4654,14 @@ export default function App() {
               onUpdate={(patch) => {
                 setJobs((prev) => prev.map((j) => {
                   if (j.id !== activeJob.id) return j;
-                  const base = j.interviewDifficulty || { intensity: null, rounds: "", timeline: "", caseStudy: false, stages: [], summary: "" };
+                  const empty = { intensity: null, rounds: "", timeline: "", caseStudy: false, stages: [], summary: "" };
+                  const coName = (companies.find((c) => c.id === j.companyId)?.name) || "";
+                  const curatedBase = getInterviewProcessOverride(coName);
+                  const stored = j.interviewDifficulty || {};
+                  const base =
+                    curatedBase && !stored.editedAt
+                      ? { ...empty, ...curatedBase }
+                      : { ...empty, ...stored };
                   return {
                     ...j,
                     interviewDifficulty: {

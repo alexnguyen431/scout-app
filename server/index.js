@@ -4,6 +4,7 @@ import { URL } from "url";
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
 
 const PORT = process.env.API_PORT || 3001;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -87,6 +88,9 @@ const KNOWN_BRAND_COLORS_SERVER = {
   thumbtack: "#009FD9",
   "doordash.com": "#FF3008",
   doordash: "#FF3008",
+  /** Superhuman (email): AI often returns yellow (speed/highlight confusion). Real product UI is dark. */
+  "superhuman.com": "#0f172a",
+  superhuman: "#0f172a",
 };
 
 async function readBrandColors() {
@@ -194,6 +198,10 @@ function extractJsonObject(text) {
 }
 
 async function fetchInterviewDifficultyViaClaude(companyName, title) {
+  const overridden = getInterviewProcessOverride(companyName);
+  if (overridden) {
+    return { ...overridden, generatedAt: new Date().toISOString() };
+  }
   if (!ANTHROPIC_KEY) throw new Error("Missing ANTHROPIC_API_KEY on server");
   if (!companyName || !title) throw new Error("companyName and title required");
   const text = await handleClaudeProxy({
@@ -1463,6 +1471,11 @@ const server = http.createServer(async (req, res) => {
       }
       const refresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
       const cacheKey = interviewCacheKey(companyName, title);
+      const curated = getInterviewProcessOverride(companyName);
+      if (curated) {
+        send(res, 200, { ...curated, generatedAt: new Date().toISOString(), curated: true });
+        return;
+      }
       const cache = await readInterviewDifficulty();
       if (!refresh && cache[cacheKey]) {
         send(res, 200, { ...cache[cacheKey], cached: true });
