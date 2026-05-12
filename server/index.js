@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
+import { fetchAshbyJobPosting, getAshbyJobId, resolveAshbyBoardSlugFromUrl } from "../ashbyImport.js";
 
 const PORT = process.env.API_PORT || 3001;
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -365,38 +366,20 @@ async function handleJobProxy(ats, company, jobId) {
     };
   }
   if (ats === "ashby") {
-    const boardUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(company)}`;
-    const res = await fetch(boardUrl, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; Scout/1.0; Job Tracker)",
-        Referer: "https://jobs.ashbyhq.com/",
-      },
-    });
-    if (!res.ok) {
-      const msg = res.status === 401
-        ? "Ashby returned 401. Some boards may be restricted."
-        : `Ashby returned ${res.status}`;
-      throw new Error(msg);
+    const posting = await fetchAshbyJobPosting(company, jobId);
+    let salary = posting.salary || null;
+    if (!salary) {
+      try {
+        const scraped = await handleScrape(`https://jobs.ashbyhq.com/${encodeURIComponent(company)}/${jobId}`);
+        salary = scraped.salary || null;
+      } catch (_) {}
     }
-    const data = await res.json();
-    const job = (data.jobs || []).find(
-      (j) => j.id === jobId || (j.jobUrl && j.jobUrl.includes(jobId))
-    );
-    if (!job) throw new Error("Job not found in Ashby board");
-    const raw = job.descriptionHtml || job.descriptionPlain || "";
-    let salary = null;
-    try {
-      const jobPageUrl = `https://jobs.ashbyhq.com/${company}/${jobId}`;
-      const scraped = await handleScrape(jobPageUrl);
-      salary = scraped.salary || null;
-    } catch (_) {}
     return {
-      title: job.title,
-      companyName: company,
-      location: job.location || job.workplaceType || "Remote",
+      title: posting.title,
+      companyName: posting.companyName || company,
+      location: posting.location,
       salary,
-      content: htmlToText(raw),
+      content: htmlToText(posting.raw),
     };
   }
   if (ats === "workday") {
@@ -491,6 +474,20 @@ async function handleScrape(targetUrl, source = null) {
   const parsed = new URL(targetUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
     throw new Error("Only http/https URLs are supported");
+  }
+
+  const ashbyJid = getAshbyJobId(parsed);
+  const ashbyBoard = ashbyJid ? resolveAshbyBoardSlugFromUrl(parsed) : null;
+  if (ashbyJid && ashbyBoard) {
+    const posting = await fetchAshbyJobPosting(ashbyBoard, ashbyJid);
+    return {
+      title: posting.title,
+      companyName: posting.companyName || ashbyBoard,
+      location: posting.location,
+      salary: posting.salary || null,
+      content: htmlToText(posting.raw),
+      jsonLd: null,
+    };
   }
 
   const controller = new AbortController();

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import confetti from "canvas-confetti";
 import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
+import { getAshbyJobId, resolveAshbyBoardSlugFromUrl } from "../ashbyImport.js";
 
 const SCOUT_KEY_STORAGE = "scout-key";
 const API_BASE = (import.meta.env.VITE_API_URL ?? "")
@@ -859,10 +860,15 @@ function detectATS(url) {
       return { ats: "lever", company: parts[0], jobId: parts[1] };
     }
 
-    // Ashby: jobs.ashbyhq.com/company/uuid
+    // Ashby: jobs.ashbyhq.com/company/uuid or embedded boards with ashby_jid
     if (host === "jobs.ashbyhq.com") {
       const parts = path.split("/").filter(Boolean);
-      return { ats: "ashby", company: parts[0], jobId: parts[1] };
+      const company = parts[0] ? decodeURIComponent(parts[0]) : null;
+      return { ats: "ashby", company, jobId: parts[1] || null };
+    }
+    const ashbyJid = getAshbyJobId(url);
+    if (ashbyJid) {
+      return { ats: "ashby", company: resolveAshbyBoardSlugFromUrl(url), jobId: ashbyJid };
     }
 
     // SmartRecruiters: jobs.smartrecruiters.com/CompanyName/postingId-slug

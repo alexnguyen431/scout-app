@@ -1,6 +1,7 @@
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
 import { getInterviewProcessOverride } from "../interviewProcessOverrides.js";
+import { fetchAshbyJobPosting, getAshbyJobId, resolveAshbyBoardSlugFromUrl } from "../ashbyImport.js";
 
 // ---------------------------------------------------------------------------
 // Redis (Upstash) – replaces file-based data/ storage for serverless
@@ -457,15 +458,12 @@ async function handleJobProxy(ats, company, jobId) {
     return { title: data.text, companyName: company, location: data.categories?.location || data.categories?.allLocations?.[0] || "Remote", salary: extractSalaryFromText(content), content };
   }
   if (ats === "ashby") {
-    const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(company)}`, { headers: { Accept: "application/json", "User-Agent": BROWSER_UA, Referer: "https://jobs.ashbyhq.com/" } });
-    if (!res.ok) throw new Error(`Ashby returned ${res.status}`);
-    const data = await res.json();
-    const job = (data.jobs || []).find(j => j.id === jobId || (j.jobUrl && j.jobUrl.includes(jobId)));
-    if (!job) throw new Error("Job not found in Ashby board");
-    const raw = job.descriptionHtml || job.descriptionPlain || "";
-    let salary = null;
-    try { const scraped = await handleScrape(`https://jobs.ashbyhq.com/${company}/${jobId}`); salary = scraped.salary || null; } catch (_) {}
-    return { title: job.title, companyName: company, location: job.location || job.workplaceType || "Remote", salary, content: htmlToText(raw) };
+    const posting = await fetchAshbyJobPosting(company, jobId);
+    let salary = posting.salary || null;
+    if (!salary) {
+      try { const scraped = await handleScrape(`https://jobs.ashbyhq.com/${encodeURIComponent(company)}/${jobId}`); salary = scraped.salary || null; } catch (_) {}
+    }
+    return { title: posting.title, companyName: posting.companyName || company, location: posting.location, salary, content: htmlToText(posting.raw) };
   }
   if (ats === "workday") {
     const parsed = new URL(jobId);
@@ -518,6 +516,21 @@ async function fetchWithTimeout(url, signal) {
 async function handleScrape(targetUrl, source = null) {
   const parsed = new URL(targetUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Only http/https URLs are supported");
+
+  const ashbyJid = getAshbyJobId(parsed);
+  const ashbyBoard = ashbyJid ? resolveAshbyBoardSlugFromUrl(parsed) : null;
+  if (ashbyJid && ashbyBoard) {
+    const posting = await fetchAshbyJobPosting(ashbyBoard, ashbyJid);
+    return {
+      title: posting.title,
+      companyName: posting.companyName || ashbyBoard,
+      location: posting.location,
+      salary: posting.salary || null,
+      content: htmlToText(posting.raw),
+      jsonLd: null,
+    };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   let html;
