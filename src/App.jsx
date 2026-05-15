@@ -246,7 +246,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
           type="button"
           onClick={() => onEstimate(true)}
           disabled={!canEstimate || loading}
-          title="Force a fresh AI estimate (TEMP)"
+          title="Fetch a fresh AI estimate for this role"
           style={{
             background: "none",
             border: "none",
@@ -258,7 +258,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
             opacity: canEstimate && !loading ? 1 : 0.5,
           }}
         >
-          {loading ? "Re-estimating…" : "Re-estimate"}
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       )}
     </div>
@@ -397,7 +397,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
       )}
       {error && (
         <div style={{ marginTop: 8, fontSize: 14, color: "#ef4444" }}>
-          Re-estimate failed: {error}
+          Refresh failed: {error}
         </div>
       )}
       {aiDisclaimer}
@@ -1279,16 +1279,18 @@ function getCss(T, isDark) {
     input: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT, letterSpacing: "-0.01em" },
     textarea: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", resize: "vertical", minHeight: 110, fontFamily: FONT_TEXT, boxSizing: "border-box", lineHeight: 1.6, letterSpacing: "-0.01em" },
     select: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT },
-    label: { display: "block", fontSize: 14, fontWeight: 600, color: T.text, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 10, fontFamily: FONT_DISPLAY },
+    label: { display: "block", fontSize: 16, fontWeight: 600, color: T.text, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 10, fontFamily: FONT_DISPLAY },
     tag: { display: "inline-flex", padding: "3px 9px", borderRadius: 6, fontSize: 14, background: T.surfaceHover, color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     pill: { display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
-    /** Priority/status pills — match secondary “Skip” (`btn("sec")`): white pill, 1px border, muted text */
+    /** Priority/status pills — 14px body; titles use `css.label` (16px) */
     choicePill: (selected) => ({
       display: "inline-flex",
       alignItems: "center",
       gap: 0,
       borderRadius: 9999,
-      fontSize: 13,
+      fontSize: 14,
+      fontFamily: FONT_DISPLAY,
+      letterSpacing: "-0.01em",
       padding: "8px 14px",
       fontWeight: selected ? 600 : 500,
       color: selected ? T.text : T.textSec,
@@ -1358,7 +1360,7 @@ function getCss(T, isDark) {
       borderRadius: 14,
       padding: 18,
     },
-    infoLabel: { fontSize: 14, fontWeight: 600, color: T.textMuted, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 6, fontFamily: FONT_DISPLAY },
+    infoLabel: { fontSize: 16, fontWeight: 600, color: T.textMuted, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 6, fontFamily: FONT_DISPLAY },
     infoVal: { fontSize: 14, color: T.infoVal, letterSpacing: "-0.01em", fontFamily: FONT_TEXT },
   };
 }
