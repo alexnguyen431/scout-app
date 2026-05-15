@@ -8,10 +8,6 @@ const API_BASE = (import.meta.env.VITE_API_URL ?? "")
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
 
-const FEEDBACK_BANNER_STORAGE = "scout-feedback-banner-dismissed";
-/** Delay before showing the feedback banner so the main UI paints first */
-const FEEDBACK_BANNER_DELAY_MS = 2000;
-
 const MOBILE_MENU_MS = 380;
 const MOBILE_MENU_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
@@ -78,6 +74,8 @@ function EditableField({
   emptyLabel,
   inputType,
   displaySuffix,
+  /** false = flush left/right (e.g. brand header) without tap-target inset */
+  displayInset = true,
 }) {
   const inputRef = useRef(null);
   useEffect(() => {
@@ -141,8 +139,9 @@ function EditableField({
         ...displayStyle,
         cursor: "pointer",
         borderRadius: 4,
-        padding: "2px 6px",
-        margin: "-2px -6px",
+        ...(displayInset
+          ? { padding: "2px 6px", margin: "-2px -6px" }
+          : { padding: 0, margin: 0 }),
         border: "1px solid transparent",
         transition: "border-color 0.15s",
       }}
@@ -220,7 +219,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
   };
   const inputBase = { ...css.input, width: "100%", padding: "6px 8px", borderRadius: 4 };
   const containerStyle = {
-    marginBottom: 18,
+    marginBottom: 0,
     paddingBottom: 18,
     borderBottom: `1px solid ${T.border}`,
   };
@@ -269,7 +268,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
     return (
       <div style={containerStyle}>
         {labelRow}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.textMuted, fontSize: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.textMuted, fontSize: 14 }}>
           <Spinner size={12} />
           Estimating interview process for {companyName || "this role"}…
         </div>
@@ -283,7 +282,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
       <div style={containerStyle}>
         {labelRow}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, color: T.textMuted }}>
+          <span style={{ fontSize: 14, color: T.textMuted }}>
             {error ? `Estimate failed: ${error}` : "No estimate yet. Use AI to guess the process length and intensity for this role."}
           </span>
           <button
@@ -292,7 +291,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
             disabled={!canEstimate}
             style={{
               ...css.btn("sec"),
-              fontSize: 12,
+              fontSize: 14,
               padding: "5px 11px",
               opacity: canEstimate ? 1 : 0.5,
               cursor: canEstimate ? "pointer" : "not-allowed",
@@ -310,16 +309,16 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
     <div style={containerStyle}>
       {labelRow}
       <div style={{ marginBottom: (data.stages || []).length || data.summary ? 12 : 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Intensity</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Intensity</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <IntensityDots value={data.intensity} T={T} />
-          <span style={{ fontSize: 12, color: T.textSec }}>{data.intensity != null ? `${data.intensity}/5` : "—"}</span>
+          <span style={{ fontSize: 14, color: T.textSec }}>{data.intensity != null ? `${data.intensity}/5` : "—"}</span>
         </div>
       </div>
 
       {((data.stages || []).length > 0 || editing === "stages") && (
         <div style={{ marginBottom: data.summary || editing === "summary" ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Rounds</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.textSec, marginBottom: 6 }}>Rounds</div>
           {editing === "stages" ? (
             <textarea
               ref={editRef}
@@ -332,14 +331,14 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
               }}
               placeholder="One stage per line"
               rows={Math.max(3, draft.split("\n").length)}
-              style={{ ...inputBase, fontSize: 13, lineHeight: 1.6, minHeight: 80, resize: "vertical" }}
+              style={{ ...inputBase, fontSize: 14, lineHeight: 1.6, minHeight: 80, resize: "vertical" }}
             />
           ) : (data.stages || []).length > 0 ? (
             <ul
               onClick={onUpdate ? () => startEdit("stages", (data.stages || []).join("\n")) : undefined}
               onMouseEnter={onUpdate ? editableHover : undefined}
               onMouseLeave={onUpdate ? editableLeave : undefined}
-              style={{ ...editableBox, margin: "-2px -6px", paddingLeft: 24, paddingTop: 2, paddingBottom: 2, fontSize: 13, color: T.text, lineHeight: 1.6, listStylePosition: "outside" }}
+              style={{ ...editableBox, margin: "-2px -6px", paddingLeft: 24, paddingTop: 2, paddingBottom: 2, fontSize: 14, color: T.text, lineHeight: 1.6, listStylePosition: "outside" }}
               title={onUpdate ? "Click to edit" : undefined}
             >
               {data.stages.map((s, i) => (
@@ -351,7 +350,7 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
               onClick={() => startEdit("stages", "")}
               onMouseEnter={editableHover}
               onMouseLeave={editableLeave}
-              style={{ ...editableBox, fontSize: 12, color: T.textMuted }}
+              style={{ ...editableBox, fontSize: 14, color: T.textMuted }}
             >
               Click to add stages…
             </div>
@@ -372,14 +371,14 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
             }}
             placeholder="Summary of what to expect"
             rows={Math.max(3, Math.min(8, draft.split("\n").length + 1))}
-            style={{ ...inputBase, fontSize: 12.5, lineHeight: 1.55, color: T.textSec, minHeight: 70, resize: "vertical" }}
+            style={{ ...inputBase, fontSize: 14, lineHeight: 1.55, color: T.textSec, minHeight: 70, resize: "vertical" }}
           />
         ) : (
           <p
             onClick={onUpdate ? () => startEdit("summary", data.summary || "") : undefined}
             onMouseEnter={onUpdate ? editableHover : undefined}
             onMouseLeave={onUpdate ? editableLeave : undefined}
-            style={{ ...editableBox, fontSize: 12.5, color: T.textSec, lineHeight: 1.55, margin: "-2px -6px" }}
+            style={{ ...editableBox, fontSize: 14, color: T.textSec, lineHeight: 1.55, margin: "-2px -6px" }}
             title={onUpdate ? "Click to edit" : undefined}
           >
             {data.summary}
@@ -391,13 +390,13 @@ function InterviewDifficultySection({ job, companyName, loading, error, onEstima
           onClick={() => startEdit("summary", "")}
           onMouseEnter={editableHover}
           onMouseLeave={editableLeave}
-          style={{ ...editableBox, fontSize: 12, color: T.textMuted }}
+          style={{ ...editableBox, fontSize: 14, color: T.textMuted }}
         >
           Click to add a summary…
         </div>
       )}
       {error && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+        <div style={{ marginTop: 8, fontSize: 14, color: "#ef4444" }}>
           Re-estimate failed: {error}
         </div>
       )}
@@ -1278,11 +1277,68 @@ function getCss(T, isDark) {
       transition: "all 0.2s ease",
     },
     input: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT, letterSpacing: "-0.01em" },
-    textarea: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: T.text, outline: "none", resize: "vertical", minHeight: 110, fontFamily: FONT_TEXT, boxSizing: "border-box", lineHeight: 1.6, letterSpacing: "-0.01em" },
+    textarea: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", resize: "vertical", minHeight: 110, fontFamily: FONT_TEXT, boxSizing: "border-box", lineHeight: 1.6, letterSpacing: "-0.01em" },
     select: { width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: FONT_TEXT },
     label: { display: "block", fontSize: 14, fontWeight: 600, color: T.text, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 10, fontFamily: FONT_DISPLAY },
-    tag: { display: "inline-flex", padding: "3px 9px", borderRadius: 6, fontSize: 12, background: T.surfaceHover, color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
+    tag: { display: "inline-flex", padding: "3px 9px", borderRadius: 6, fontSize: 14, background: T.surfaceHover, color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
     pill: { display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: T.textSec, fontWeight: 500, fontFamily: FONT_TEXT },
+    /** Priority/status pills — match secondary “Skip” (`btn("sec")`): white pill, 1px border, muted text */
+    choicePill: (selected) => ({
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 0,
+      borderRadius: 9999,
+      fontSize: 13,
+      padding: "8px 14px",
+      fontWeight: selected ? 600 : 500,
+      color: selected ? T.text : T.textSec,
+      border: `1px solid ${T.border}`,
+      background: isDark ? "rgba(255,255,255,0.06)" : T.surface,
+      boxSizing: "border-box",
+      whiteSpace: "nowrap",
+    }),
+    segmented: {
+      /** iOS-style: soft gray capsule, inset white “thumb” on the selected segment */
+      track: {
+        display: "flex",
+        width: "100%",
+        maxWidth: "100%",
+        alignItems: "stretch",
+        borderRadius: 9999,
+        padding: 3,
+        border: "none",
+        boxSizing: "border-box",
+        background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+        boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "inset 0 1px 0 rgba(255,255,255,0.65)",
+      },
+      segment: (index, total, selected, opts = {}) => {
+        const dense = opts.dense === true;
+        return {
+          flex: "1 1 0",
+          minWidth: dense ? 52 : 56,
+          margin: 2,
+          padding: dense ? "6px 8px" : "7px 10px",
+          fontSize: dense ? 14 : 13,
+          lineHeight: 1.2,
+          minHeight: dense ? 32 : 34,
+          fontWeight: selected ? 600 : 500,
+          fontFamily: FONT_TEXT,
+          cursor: "pointer",
+          border: "none",
+          borderRadius: 9999,
+          boxSizing: "border-box",
+          background: selected ? (isDark ? "rgba(255,255,255,0.16)" : "#ffffff") : "transparent",
+          color: selected ? (isDark ? "#fafaf9" : "#0a0a0a") : T.textMuted,
+          boxShadow: selected
+            ? (isDark ? "0 1px 2px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06)" : "0 1px 2px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)")
+            : "none",
+          transition: "background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        };
+      },
+    },
     overlay: { position: "fixed", inset: 0, background: T.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
     modal: {
       background: isDark ? T.surface : "rgba(255, 255, 255, 1)",
@@ -1302,8 +1358,8 @@ function getCss(T, isDark) {
       borderRadius: 14,
       padding: 18,
     },
-    infoLabel: { fontSize: 12, fontWeight: 600, color: T.textMuted, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 6, fontFamily: FONT_DISPLAY },
-    infoVal: { fontSize: 13.5, color: T.infoVal, letterSpacing: "-0.01em", fontFamily: FONT_TEXT },
+    infoLabel: { fontSize: 14, fontWeight: 600, color: T.textMuted, textTransform: "none", letterSpacing: "-0.01em", marginBottom: 6, fontFamily: FONT_DISPLAY },
+    infoVal: { fontSize: 14, color: T.infoVal, letterSpacing: "-0.01em", fontFamily: FONT_TEXT },
   };
 }
 
@@ -1392,7 +1448,7 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
             <code style={{ fontSize: 14, color: T.text, flex: 1, wordBreak: "break-all" }}>{createdKey}</code>
-            <button type="button" style={{ ...css.btn("sec"), padding: "6px 12px", fontSize: 12 }} onClick={() => { navigator.clipboard.writeText(createdKey); onCopyToast?.(); }}>Copy</button>
+            <button type="button" style={{ ...css.btn("sec"), padding: "6px 12px", fontSize: 14 }} onClick={() => { navigator.clipboard.writeText(createdKey); onCopyToast?.(); }}>Copy</button>
           </div>
           <button type="button" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14 }} onClick={finishWithCreatedKey}>
             Continue
@@ -1432,10 +1488,10 @@ function KeyEntryModal({ onKeyReady, onClose, theme, message, onCopyToast }) {
               />
               <button type="button" style={css.btn("primary")} onClick={restoreKey}>Restore</button>
             </div>
-            {pasteError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{pasteError}</div>}
+            {pasteError && <div style={{ color: "#f87171", fontSize: 14, marginTop: 8 }}>{pasteError}</div>}
           </div>
         </div>
-        <p style={{ fontSize: 12, color: T.textMuted, marginTop: 20 }}>
+        <p style={{ fontSize: 14, color: T.textMuted, marginTop: 20 }}>
           <a href="/recover" style={{ color: T.accent, textDecoration: "none" }}>Lost your key?</a> Recover with email.
         </p>
       </div>
@@ -1492,11 +1548,11 @@ function RecoverPage({ theme, onKeyRestored }) {
             <label style={css.label}>Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required style={css.input} />
           </div>
-          {error && <div style={{ color: "#f87171", fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
-          {message && <div style={{ color: T.accent, fontSize: 12.5, marginBottom: 12 }}>{message}</div>}
+          {error && <div style={{ color: "#f87171", fontSize: 14, marginBottom: 12 }}>{error}</div>}
+          {message && <div style={{ color: T.accent, fontSize: 14, marginBottom: 12 }}>{message}</div>}
           <button type="submit" style={{ ...css.btn("primary"), width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }} disabled={loading}>{loading ? <><Spinner /> Sending…</> : "Send recovery link"}</button>
         </form>
-        <p style={{ fontSize: 12, color: T.textMuted, marginTop: 20 }}>
+        <p style={{ fontSize: 14, color: T.textMuted, marginTop: 20 }}>
           <a href="/" style={{ color: T.accent, textDecoration: "none" }}>← Back to Scout</a>
         </p>
       </div>
@@ -1514,23 +1570,9 @@ export default function App() {
   const [view, setView] = useState("board");
   const [companies, setCompanies] = useState([]);
   const [jobs, setJobs] = useState([]);
-  const [modal, setModal] = useState(null); // "addCo" | "addJob" | "job" | "feedback"
-  const [feedbackBannerDismissed, setFeedbackBannerDismissed] = useState(() => {
-    try {
-      return typeof localStorage !== "undefined" && localStorage.getItem(FEEDBACK_BANNER_STORAGE) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [feedbackBannerReady, setFeedbackBannerReady] = useState(false);
-  const [feedbackName, setFeedbackName] = useState("");
-  const [feedbackEmail, setFeedbackEmail] = useState("");
-  const [feedbackMessage, setFeedbackMessage] = useState("");
-  const [feedbackHoneypot, setFeedbackHoneypot] = useState("");
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [feedbackError, setFeedbackError] = useState(null);
-  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const feedbackCloseTimerRef = useRef(null);
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
+  const [modal, setModal] = useState(null); // "addCo" | "addJob" | "job"
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyModalMessage, setKeyModalMessage] = useState(null);
   const [keyMenuOpen, setKeyMenuOpen] = useState(false);
@@ -1577,12 +1619,19 @@ export default function App() {
   const [recoveryEmailEditing, setRecoveryEmailEditing] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [dragJobId, setDragJobId] = useState(null);
+  const dragJobIdRef = useRef(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dragStartRect, setDragStartRect] = useState(null);
   const [dragMouse, setDragMouse] = useState(null);
+  const dragMouseRef = useRef(null);
+  dragMouseRef.current = dragMouse;
   const [dragGrabOffset, setDragGrabOffset] = useState(null);
   const [dragStartMouse, setDragStartMouse] = useState(null);
   const pendingDragRef = useRef(null);
+  const openJobRef = useRef(null);
+  const moveJobRef = useRef(null);
+  /** Set true when a real column drag finishes; next card onClick is suppressed */
+  const kanbanSuppressNextClickRef = useRef(false);
   /** After GET /api/data succeeds for the current key; prevents POST from wiping Redis when load failed (401/network) but state is still []. */
   const dataLoadSucceededRef = useRef(false);
   const [loading, setLoading] = useState(false);
@@ -1614,86 +1663,6 @@ export default function App() {
   const [kanbanSortByColumn, setKanbanSortByColumn] = useState({}); // { [statusId]: { column: string, dir: 'asc'|'desc' } }
   const [jobDetailMenuOpen, setJobDetailMenuOpen] = useState(false);
   const [brandColorsByDomain, setBrandColorsByDomain] = useState({});
-
-  useEffect(() => () => {
-    if (feedbackCloseTimerRef.current) clearTimeout(feedbackCloseTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (feedbackBannerDismissed) return;
-    const t = setTimeout(() => setFeedbackBannerReady(true), FEEDBACK_BANNER_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [feedbackBannerDismissed]);
-
-  const dismissFeedbackBanner = useCallback(() => {
-    setFeedbackBannerDismissed(true);
-    try {
-      localStorage.setItem(FEEDBACK_BANNER_STORAGE, "1");
-    } catch (_) {}
-  }, []);
-
-  const resetFeedbackForm = useCallback(() => {
-    if (feedbackCloseTimerRef.current) {
-      clearTimeout(feedbackCloseTimerRef.current);
-      feedbackCloseTimerRef.current = null;
-    }
-    setFeedbackName("");
-    setFeedbackEmail("");
-    setFeedbackMessage("");
-    setFeedbackHoneypot("");
-    setFeedbackError(null);
-    setFeedbackSuccess(false);
-    setFeedbackSubmitting(false);
-  }, []);
-
-  const openFeedbackModal = useCallback(() => {
-    resetFeedbackForm();
-    setModal("feedback");
-  }, [resetFeedbackForm]);
-
-  const closeFeedbackModal = useCallback(() => {
-    resetFeedbackForm();
-    setModal(null);
-  }, [resetFeedbackForm]);
-
-  const submitFeedback = useCallback(async (e) => {
-    e.preventDefault();
-    const msg = feedbackMessage.trim();
-    if (!msg) {
-      setFeedbackError("Please enter a message.");
-      return;
-    }
-    if (msg.length < 10) {
-      setFeedbackError("Please write at least a few words (10+ characters).");
-      return;
-    }
-    setFeedbackSubmitting(true);
-    setFeedbackError(null);
-    try {
-      const res = await fetch((API_BASE || "") + "/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getScoutHeaders() },
-        body: JSON.stringify({
-          message: msg,
-          name: feedbackName.trim() || undefined,
-          email: feedbackEmail.trim() || undefined,
-          companyWebsite: feedbackHoneypot,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Request failed");
-      setFeedbackSuccess(true);
-      if (feedbackCloseTimerRef.current) clearTimeout(feedbackCloseTimerRef.current);
-      feedbackCloseTimerRef.current = setTimeout(() => {
-        feedbackCloseTimerRef.current = null;
-        closeFeedbackModal();
-      }, 10000);
-    } catch (err) {
-      setFeedbackError(err.message || "Something went wrong");
-    } finally {
-      setFeedbackSubmitting(false);
-    }
-  }, [feedbackMessage, feedbackName, feedbackEmail, feedbackHoneypot, closeFeedbackModal]);
 
   const mobileMenuTransitionMs = mobileMenuReducedMotion ? 0 : MOBILE_MENU_MS;
 
@@ -1944,46 +1913,47 @@ export default function App() {
 
     const beginDragIfNeeded = (point) => {
       const p = pendingDragRef.current;
-      if (p && !dragJobId) {
-        const dx = point.x - p.startX;
-        const dy = point.y - p.startY;
-        if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) {
-          setDragJobId(p.jobId);
-          setDragStartRect(p.rect);
-          setDragGrabOffset(p.grabOffset);
-          setDragStartMouse({ x: p.startX, y: p.startY });
-          setDragMouse({ x: point.x, y: point.y });
-        }
+      if (!p || dragJobIdRef.current) return false;
+      const dx = point.x - p.startX;
+      const dy = point.y - p.startY;
+      if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) {
+        dragJobIdRef.current = p.jobId;
+        setDragJobId(p.jobId);
+        setDragStartRect(p.rect);
+        setDragGrabOffset(p.grabOffset);
+        setDragStartMouse({ x: p.startX, y: p.startY });
+        setDragMouse({ x: point.x, y: point.y });
         return true;
       }
       return false;
     };
 
     const updateDragPosition = (point) => {
-      if (!dragJobId) return;
+      if (!dragJobIdRef.current) return;
       setDragMouse({ x: point.x, y: point.y });
       const col = document.elementFromPoint(point.x, point.y)?.closest("[data-kanban-status]");
       setDragOverCol(col ? col.dataset.kanbanStatus : null);
     };
 
     const finishDrag = (point) => {
-      if (pendingDragRef.current && !dragJobId) {
-        const p = pendingDragRef.current;
-        pendingDragRef.current = null;
-        const job = jobs.find(j => j.id === p.jobId);
-        if (job) openJob(job);
-        return;
-      }
-      if (dragJobId) {
+      const hasPending = !!pendingDragRef.current;
+      const hasDrag = !!dragJobIdRef.current;
+      if (!hasPending && !hasDrag) return;
+
+      if (hasDrag) {
+        const draggingId = dragJobIdRef.current;
         const col = document.elementFromPoint(point.x, point.y)?.closest("[data-kanban-status]");
-        if (col) moveJob(dragJobId, col.dataset.kanbanStatus);
+        if (col) moveJobRef.current(draggingId, col.dataset.kanbanStatus);
+        dragJobIdRef.current = null;
         setDragJobId(null);
         setDragOverCol(null);
         setDragStartRect(null);
         setDragMouse(null);
         setDragGrabOffset(null);
         setDragStartMouse(null);
+        kanbanSuppressNextClickRef.current = true;
       }
+      // Always clear pending; onClick on the card handles opening for taps
       pendingDragRef.current = null;
     };
 
@@ -1994,6 +1964,7 @@ export default function App() {
     };
 
     const onMouseUp = (e) => {
+      if (e.button !== 0) return;
       const point = { x: e.clientX, y: e.clientY };
       finishDrag(point);
     };
@@ -2009,23 +1980,25 @@ export default function App() {
     const onTouchEnd = (e) => {
       const t = e.changedTouches[0];
       // Fallback to last drag position if we don't have a touch point
-      const point = t ? { x: t.clientX, y: t.clientY } : (dragMouse || { x: 0, y: 0 });
+      const point = t ? { x: t.clientX, y: t.clientY } : (dragMouseRef.current || { x: 0, y: 0 });
       finishDrag(point);
     };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    document.addEventListener("touchmove", onTouchMove);
-    document.addEventListener("touchend", onTouchEnd);
-    document.addEventListener("touchcancel", onTouchEnd);
+    const cap = true;
+    const touchMoveOpts = { capture: cap, passive: false };
+    window.addEventListener("mousemove", onMouseMove, cap);
+    window.addEventListener("mouseup", onMouseUp, cap);
+    window.addEventListener("touchmove", onTouchMove, touchMoveOpts);
+    window.addEventListener("touchend", onTouchEnd, cap);
+    window.addEventListener("touchcancel", onTouchEnd, cap);
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("touchend", onTouchEnd);
-      document.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("mousemove", onMouseMove, cap);
+      window.removeEventListener("mouseup", onMouseUp, cap);
+      window.removeEventListener("touchmove", onTouchMove, touchMoveOpts);
+      window.removeEventListener("touchend", onTouchEnd, cap);
+      window.removeEventListener("touchcancel", onTouchEnd, cap);
     };
-  }, [dragJobId, jobs, dragMouse]);
+  }, []);
 
   // During active drag, set grabbing cursor and disable text selection
   useEffect(() => {
@@ -2248,15 +2221,13 @@ export default function App() {
         setEditing(null);
         setModal(null);
         setJobDetailMenuOpen(false);
-      } else if (modal === "feedback") {
-        closeFeedbackModal();
       } else {
         setModal(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [modal, closeFeedbackModal]);
+  }, [modal]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -2329,6 +2300,15 @@ export default function App() {
     setNewNoteInput("");
     setEditing(null);
     setModal("job");
+  };
+
+  /** Kanban card click/keyboard: open job unless a real drag just finished */
+  const tryOpenKanbanCard = (job) => {
+    if (kanbanSuppressNextClickRef.current) {
+      kanbanSuppressNextClickRef.current = false;
+      return;
+    }
+    openJob(job);
   };
 
   const activeJob = jobs.find(j => j.id === activeJobId);
@@ -2750,6 +2730,10 @@ export default function App() {
 
   const truncatedKey = key ? `${key.slice(0, 10)}…` : "";
 
+  dragJobIdRef.current = dragJobId;
+  openJobRef.current = openJob;
+  moveJobRef.current = moveJob;
+
   return (
     <div style={css.app} data-dragging={dragJobId ? "true" : undefined}>
       <style>{`
@@ -2815,18 +2799,33 @@ export default function App() {
         .job-summary-html p{margin:0 0 0.5em 0;font-size:inherit;line-height:inherit}
         .job-summary-html p:last-child{margin-bottom:0}
         .job-summary-html strong{font-weight:600}
+        .scout-job-note-card{position:relative}
+        .scout-job-note-card .scout-note-remove-wrap{
+          position:absolute;
+          top:8px;
+          right:8px;
+          z-index:2;
+          opacity:1;
+        }
+        @media (hover: hover) and (pointer: fine) {
+          .scout-job-note-card .scout-note-remove-wrap{
+            opacity:0;
+            transition:opacity 0.15s ease;
+          }
+          .scout-job-note-card:hover .scout-note-remove-wrap,
+          .scout-job-note-card:focus-within .scout-note-remove-wrap,
+          .scout-job-note-card .scout-note-remove-wrap:focus-within{
+            opacity:1;
+          }
+        }
+        @media (prefers-reduced-motion: reduce){
+          .scout-job-note-card .scout-note-remove-wrap{transition:none !important}
+        }
         [data-dragging="true"],[data-dragging="true"] *{cursor:grabbing !important}
-        @keyframes scoutFeedbackBannerIn {
-          from { opacity: 0; transform: translate3d(0, -12px, 0); }
-          to { opacity: 1; transform: translate3d(0, 0, 0); }
-        }
-        .scout-feedback-banner {
-          animation: scoutFeedbackBannerIn 1s cubic-bezier(0.22, 1, 0.36, 1) both;
-        }
         @media (prefers-reduced-motion: reduce) {
-          .scout-feedback-banner { animation: none; opacity: 1; transform: none; }
           .scout-journal-card { animation: none !important; }
         }
+        .scout-job-notes-add textarea { min-height: 72px; }
         @media (max-width: 640px) {
           .scout-header { padding: 12px 16px; gap: 10px; }
           .scout-header-left { gap: 12px; }
@@ -2839,8 +2838,7 @@ export default function App() {
           .scout-job-modal-header-row .scout-job-modal-company { min-width: 0; flex: 1 1 100%; }
           .scout-job-modal-header-row .scout-job-modal-actions { flex: 1 1 100%; min-height: 44px; align-items: center; justify-content: flex-end; }
           .scout-job-modal-content { padding-left: 16px !important; padding-right: 16px !important; }
-          .scout-job-notes-add { flex-direction: column; align-items: stretch !important; }
-          .scout-job-notes-add textarea { min-height: 80px; }
+          .scout-job-notes-add textarea { min-height: 64px; }
           .scout-job-view-link { display: none !important; }
         }
       `}</style>
@@ -2857,64 +2855,6 @@ export default function App() {
 
       {/* Main */}
       <div style={css.main}>
-        {feedbackBannerReady && !feedbackBannerDismissed && (
-          <div
-            className="scout-feedback-banner"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 20px",
-              borderBottom: `1px solid ${T.border}`,
-              borderLeft: `3px solid ${T.accent}`,
-              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-              flexShrink: 0,
-              flexWrap: "wrap",
-              transformOrigin: "top center",
-            }}
-          >
-            <p style={{ flex: 1, margin: 0, fontSize: 13.5, color: T.textSec, lineHeight: 1.45, letterSpacing: "-0.01em" }}>
-              <span style={{ color: T.text, fontWeight: 600 }}>We’d love your input.</span>{" "}
-              Open call for product feedback and suggestions — help shape Scout.
-            </p>
-            <button
-              type="button"
-              onClick={openFeedbackModal}
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: T.accent,
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-                fontFamily: FONT_TEXT,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Share feedback
-            </button>
-            <button
-              type="button"
-              onClick={dismissFeedbackBanner}
-              aria-label="Dismiss feedback banner"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px 8px",
-                fontSize: 22,
-                lineHeight: 1,
-                color: T.textMuted,
-                flexShrink: 0,
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
         <div className="scout-header" style={css.header}>
           {isMobile ? (
             <>
@@ -2977,7 +2917,7 @@ export default function App() {
                           <div style={{ marginBottom: 12 }}>
                             <div style={css.label}>Access key</div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                              <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
+                              <code style={{ fontSize: 14, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
                               <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => requestCloseMobileMenu(() => copyWithToast(key))}>Copy</button>
                             </div>
                             <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
@@ -2986,21 +2926,21 @@ export default function App() {
                             <div style={css.label}>Recovery email</div>
                             {workspaceEmail && !recoveryEmailEditing ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                                <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, wordBreak: "break-all" }}>{workspaceEmail}</span>
+                                <span style={{ fontSize: 14, color: T.text, flex: 1, minWidth: 0, wordBreak: "break-all" }}>{workspaceEmail}</span>
                                 <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
                                 <button type="button" onClick={() => requestCloseMobileMenu(() => removeRecoveryEmail())} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
                               </div>
                             ) : (
                               <>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 6 }}>
-                                  <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, padding: "8px 10px", fontSize: 12 }} />
-                                  <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
+                                  <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, padding: "8px 10px", fontSize: 14 }} />
+                                  <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
                                 </div>
                                 <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
                               </>
                             )}
                           </div>
-                          <button type="button" onClick={() => requestCloseMobileMenu(() => handleLogout())} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
+                          <button type="button" onClick={() => requestCloseMobileMenu(() => handleLogout())} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 14, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>Log out of this device</button>
                         </>
                       ) : (
                         <button type="button" style={{ ...css.btn("sec"), width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => requestCloseMobileMenu(() => { setKeyModalMessage(null); setShowKeyModal(true); })}>
@@ -3046,7 +2986,7 @@ export default function App() {
                         <div style={{ padding: "0 0 10px" }}>
                           <div style={css.label}>Access key</div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                            <code style={{ fontSize: 12, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
+                            <code style={{ fontSize: 14, color: T.text, flex: 1, wordBreak: "break-all" }}>{key}</code>
                             <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { copyWithToast(key); setKeyMenuOpen(false); }}>Copy</button>
                           </div>
                           <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>Save this key to access Scout from another device.</div>
@@ -3056,22 +2996,22 @@ export default function App() {
                           <div style={css.label}>Recovery email</div>
                           {workspaceEmail && !recoveryEmailEditing ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                              <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{workspaceEmail}</span>
+                              <span style={{ fontSize: 14, color: T.text, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{workspaceEmail}</span>
                               <button type="button" style={{ ...css.btn("sec"), padding: "6px 10px", fontSize: 11 }} onClick={() => { setRecoveryEmailInput(workspaceEmail); setRecoveryEmailEditing(true); }}>Edit</button>
                               <button type="button" onClick={() => { removeRecoveryEmail(); setKeyMenuOpen(false); }} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}>Remove</button>
                             </div>
                           ) : (
                             <>
                               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                                <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 12 }} />
-                                <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
+                                <input type="email" value={recoveryEmailInput} onChange={(e) => setRecoveryEmailInput(e.target.value)} placeholder="Add recovery email" style={{ ...css.input, flex: 1, padding: "8px 10px", fontSize: 14 }} />
+                                <button type="button" style={{ ...css.btn("primary"), padding: "8px 12px", fontSize: 14, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={() => saveRecoveryEmail()} disabled={recoveryEmailSaving || !recoveryEmailInput.trim()}>{recoveryEmailSaving ? <><Spinner /> Saving…</> : "Save"}</button>
                               </div>
                               <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.4 }}>If you lose your key, we'll send it to this address.</div>
                             </>
                           )}
                         </div>
                         <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 12, paddingTop: 8 }} />
-                        <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 4 }}>Log out of this device</button>
+                        <button type="button" onClick={() => { handleLogout(); setKeyMenuOpen(false); }} style={{ display: "block", width: "100%", padding: "10px 0 0", fontSize: 14, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 4 }}>Log out of this device</button>
                       </div>
                     </>
                   )}
@@ -3137,7 +3077,7 @@ export default function App() {
                   placeholder="Search company or job title..."
                   value={boardSearch}
                   onChange={(e) => setBoardSearch(e.target.value)}
-                  style={{ ...css.input, width: 220, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
+                  style={{ ...css.input, width: 220, height: 40, lineHeight: "40px", padding: "0 10px", fontSize: 14, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
                 />
               ) : (
                 <input
@@ -3145,17 +3085,17 @@ export default function App() {
                   placeholder="Search notes or company..."
                   value={journalSearch}
                   onChange={(e) => setJournalSearch(e.target.value)}
-                  style={{ ...css.input, width: 240, height: 38, lineHeight: "38px", padding: "0 10px", fontSize: 12, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
+                  style={{ ...css.input, width: 240, height: 40, lineHeight: "40px", padding: "0 10px", fontSize: 14, borderRadius: 8, boxSizing: "border-box", flexShrink: isMobile ? 0 : undefined }}
                 />
               )}
               {(() => {
                 const selectBaseStyle = {
                   ...css.select,
                   width: "auto",
-                  height: 38,
-                  lineHeight: "38px",
+                  height: 40,
+                  lineHeight: "40px",
                   padding: "0 30px 0 10px",
-                  fontSize: 12,
+                  fontSize: 14,
                   minWidth: 90,
                   borderRadius: 8,
                   appearance: "none",
@@ -3283,9 +3223,16 @@ export default function App() {
                     return (
                       <div
                         key={job.id}
-                        onMouseDown={e => {
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            tryOpenKanbanCard(job);
+                          }
+                        }}
+                        onMouseDown={(e) => {
                           if (e.button !== 0) return;
-                          e.preventDefault();
                           const rect = e.currentTarget.getBoundingClientRect();
                           pendingDragRef.current = {
                             jobId: job.id,
@@ -3295,7 +3242,8 @@ export default function App() {
                             grabOffset: { x: e.clientX - rect.left, y: e.clientY - rect.top },
                           };
                         }}
-                        onTouchStart={e => {
+                        onClick={() => tryOpenKanbanCard(job)}
+                        onTouchStart={(e) => {
                           const t = e.touches[0];
                           if (!t) return;
                           const rect = e.currentTarget.getBoundingClientRect();
@@ -3337,7 +3285,7 @@ export default function App() {
                             </div>
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            {co && <div style={{ fontSize: 12, fontWeight: 600, color: "inherit", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{co.name}</div>}
+                            {co && <div style={{ fontSize: 14, fontWeight: 600, color: "inherit", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{co.name}</div>}
                             <div style={{ fontSize: 11, opacity: 0.9, marginTop: 1 }}>Added {timeAgo(job.addedAt)}</div>
                           </div>
                         </div>
@@ -3345,13 +3293,13 @@ export default function App() {
                         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
                           {(() => {
                             const pr = PRIORITIES.find((p) => p.id === (job.priority || "medium"));
-                            return pr ? <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontFamily: FONT_TEXT, fontWeight: 600, borderLeft: `3px solid ${pr.color}`, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, letterSpacing: "-0.01em", boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span> : null;
+                            return pr ? <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontFamily: FONT_TEXT, fontWeight: 600, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, letterSpacing: "-0.01em", boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span> : null;
                           })()}
                           {job.location && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.location}</span>}
                           {job.salary && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.salary}</span>}
                         </div>
                         {job.contact && (
-                          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, display: "flex", alignItems: "center", gap: 5, letterSpacing: "-0.01em" }}>
+                          <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9, display: "flex", alignItems: "center", gap: 5, letterSpacing: "-0.01em" }}>
                             <span style={{ fontSize: 10, opacity: 0.6 }}>●</span> {job.contact}
                           </div>
                         )}
@@ -3361,7 +3309,7 @@ export default function App() {
                           const latest = notesForCard[notesForCard.length - 1];
                           const latestText = (latest?.text || "").trim();
                           return (
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 14, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -3371,7 +3319,7 @@ export default function App() {
                                   setJournalStageFilter("all");
                                   setJournalCompanyFilter(job.companyId || "");
                                 }}
-                                style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.9, fontWeight: 700, color: "inherit", fontSize: 12, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}
+                                style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", opacity: 0.9, fontWeight: 700, color: "inherit", fontSize: 14, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}
                                 title="View notes in Journal"
                               >
                                 Notes • {notesForCard.length}
@@ -3591,13 +3539,10 @@ export default function App() {
                             </td>
                             <td style={{ ...getTdStyle("position"), fontWeight: 600, whiteSpace: "normal", letterSpacing: "-0.02em" }}>{job.title}</td>
                             <td style={getTdStyle("status")}>
-                              <span style={{
-                                display: "inline-flex", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                background: `${st.color}15`, color: st.color,
-                              }}>{st.label}</span>
+                              <span style={{ ...css.pill, padding: "4px 10px", fontSize: 14, fontWeight: 600 }}>{st.label}</span>
                             </td>
                             <td style={getTdStyle("priority")}>
-                              {pr && <span style={{ ...css.pill, borderLeft: `3px solid ${pr.color}`, fontSize: 12, fontWeight: 600, boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span>}
+                              {pr && <span style={{ ...css.pill, fontSize: 14, fontWeight: 600, boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span>}
                             </td>
                             <td style={{ ...getTdStyle("applied"), color: T.textSec, fontSize: 13 }}>{job.applicationDate ? formatDate(job.applicationDate) : <span style={{ color: T.textMuted }}>—</span>}</td>
                             <td style={{ ...getTdStyle("added"), color: T.textSec, fontSize: 13 }}>{timeAgo(job.addedAt)}</td>
@@ -3611,7 +3556,7 @@ export default function App() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={e => e.stopPropagation()}
-                                  style={{ color: T.accent, textDecoration: "none", fontSize: 12.5, fontWeight: 500 }}
+                                  style={{ color: T.accent, textDecoration: "none", fontSize: 14, fontWeight: 500 }}
                                 >View ↗</a>
                               ) : <span style={{ color: T.textMuted }}>—</span>}
                             </td>
@@ -3710,7 +3655,7 @@ export default function App() {
                 return {
                   ...css.btn("sec"),
                   padding: "6px 10px",
-                  fontSize: 12,
+                  fontSize: 14,
                   borderRadius: 999,
                   borderColor: active ? col : T.border,
                   color: active ? col : T.textSec,
@@ -3752,7 +3697,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={seedDemoJournalData}
-                          style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10, flexShrink: 0 }}
+                          style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 14, borderRadius: 10, flexShrink: 0 }}
                           title="Replace current data with demo journal notes"
                         >
                           Seed demo notes
@@ -3760,7 +3705,7 @@ export default function App() {
                       )}
                       {isMobile && (
                         <>
-                          <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 8, marginRight: 2, whiteSpace: "nowrap", flexShrink: 0 }}>
+                          <span style={{ fontSize: 14, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 8, marginRight: 2, whiteSpace: "nowrap", flexShrink: 0 }}>
                             Company
                           </span>
                           <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
@@ -3771,7 +3716,7 @@ export default function App() {
                                 ...css.select,
                                 height: 40,
                                 lineHeight: "40px",
-                                fontSize: 12.5,
+                                fontSize: 14,
                                 padding: "0 34px 0 12px",
                                 borderRadius: 12,
                                 minWidth: 200,
@@ -3796,13 +3741,13 @@ export default function App() {
                           <button
                             type="button"
                             onClick={seedDemoJournalData}
-                            style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 12, borderRadius: 10 }}
+                            style={{ ...css.btn("sec"), padding: "7px 10px", fontSize: 14, borderRadius: 10 }}
                             title="Replace current data with demo journal notes"
                           >
                             Seed demo notes
                           </button>
                         )}
-                        <span style={{ fontSize: 12, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 2, whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: 14, color: T.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 2, whiteSpace: "nowrap" }}>
                           Company
                         </span>
                         <div style={{ position: "relative", display: "inline-block" }}>
@@ -3813,7 +3758,7 @@ export default function App() {
                               ...css.select,
                               height: 40,
                               lineHeight: "40px",
-                              fontSize: 12.5,
+                              fontSize: 14,
                               padding: "0 34px 0 12px",
                               borderRadius: 12,
                               minWidth: 220,
@@ -3946,8 +3891,8 @@ export default function App() {
                                         {getStatusMeta(note.previousStage)?.label || "—"} → {getStatusMeta(note.stage)?.label || getStatusMetaSafe(note.stage)?.label || "—"}
                                       </span>
                                     )}
-                                    <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 500 }}>{highlight(job?.title || "", journalSearch)}</span>
-                                    <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
+                                    <span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500 }}>{highlight(job?.title || "", journalSearch)}</span>
+                                    <span style={{ fontSize: 14, fontWeight: 600, color: T.text, letterSpacing: "-0.01em" }}>
                                       {st.label}
                                     </span>
                                   </div>
@@ -4012,7 +3957,7 @@ export default function App() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <EditableField isEditing={is("name")} value={co.name} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "name", co.name)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="Company name" displayStyle={{ fontSize: 15, fontWeight: 700, fontFamily: FONT_DISPLAY, color: cardFg, letterSpacing: "-0.02em" }} inputStyle={css.input} />
-                          <EditableField isEditing={is("website")} value={co.website} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "website", co.website)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="website.com" emptyLabel="Add website" displayStyle={{ fontSize: 12, color: cardFg, opacity: 0.85 }} inputStyle={css.input} />
+                          <EditableField isEditing={is("website")} value={co.website} editingValue={editingValue} onStartEdit={() => startEdit("company", co.id, "website", co.website)} onEditingChange={setEditingValue} onSave={saveEdit} placeholder="website.com" emptyLabel="Add website" displayStyle={{ fontSize: 14, color: cardFg, opacity: 0.85 }} inputStyle={css.input} />
                         </div>
                       </div>
                       <div style={{ marginBottom: 16 }}>
@@ -4126,18 +4071,18 @@ export default function App() {
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {co && <div style={{ fontSize: 12, fontWeight: 600, color: "inherit", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{co.name}</div>}
+                  {co && <div style={{ fontSize: 14, fontWeight: 600, color: "inherit", letterSpacing: "-0.01em", lineHeight: 1.2 }}>{co.name}</div>}
                   <div style={{ fontSize: 11, opacity: 0.9, marginTop: 1 }}>Added {timeAgo(job.addedAt)}</div>
                 </div>
               </div>
               <div style={{ fontSize: 20, fontWeight: 600, fontFamily: FONT_DISPLAY, color: "inherit", lineHeight: 1.2, marginBottom: 10, paddingTop: 8, paddingBottom: 16, letterSpacing: "-0.02em" }}>{job.title}</div>
               <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
-                {pr && <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontFamily: FONT_TEXT, fontWeight: 600, borderLeft: `3px solid ${pr.color}`, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, letterSpacing: "-0.01em", boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span>}
+                {pr && <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontFamily: FONT_TEXT, fontWeight: 600, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, letterSpacing: "-0.01em", boxSizing: "border-box", overflow: "hidden" }}>{pr.label}</span>}
                 {job.location && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.location}</span>}
                 {job.salary && <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, fontSize: 11.5, fontFamily: FONT_TEXT, background: cardFg === "#ffffff" ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)", color: cardFg, fontWeight: 500 }}>{job.salary}</span>}
               </div>
               {job.contact && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, display: "flex", alignItems: "center", gap: 5, letterSpacing: "-0.01em" }}>
+                <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9, display: "flex", alignItems: "center", gap: 5, letterSpacing: "-0.01em" }}>
                   <span style={{ fontSize: 10, opacity: 0.6 }}>●</span> {job.contact}
                 </div>
               )}
@@ -4147,8 +4092,8 @@ export default function App() {
                 const latest = manualNotes[manualNotes.length - 1];
                 const latestText = (latest?.text || "").trim();
                 return (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 12, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                    <div style={{ opacity: 0.9, fontWeight: 700, whiteSpace: "nowrap", fontSize: 12, display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: cardFg === "#ffffff" ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.08)", fontSize: 14, opacity: 0.9, lineHeight: 1.5, letterSpacing: "-0.01em", display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                    <div style={{ opacity: 0.9, fontWeight: 700, whiteSpace: "nowrap", fontSize: 14, display: "inline-flex", alignItems: "center", alignSelf: "flex-start" }}>
                       Notes • {manualNotes.length}
                     </div>
                     <span
@@ -4169,60 +4114,6 @@ export default function App() {
           </div>
         );
       })()}
-
-      {/* Feedback modal */}
-      {modal === "feedback" && (
-        <div className="scout-overlay" style={css.overlay} onClick={e => e.target === e.currentTarget && closeFeedbackModal()}>
-          <div className="scout-modal" style={css.modal} onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: feedbackSuccess ? 12 : 22 }}>
-              <div style={{ ...css.modalTitle, marginBottom: 0 }}>{feedbackSuccess ? "Thank you" : "Send feedback"}</div>
-              <button type="button" onClick={closeFeedbackModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
-            </div>
-            {feedbackSuccess ? (
-              <p style={{ fontSize: 14, color: T.textSec, lineHeight: 1.55, margin: 0 }}>
-                Your message was sent. This window will close in a few seconds.
-              </p>
-            ) : (
-              <form onSubmit={submitFeedback}>
-                <p style={{ fontSize: 13, color: T.textSec, marginBottom: 18, lineHeight: 1.5 }}>
-                  Share ideas, bugs, or what you’d like to see next. Name and email are optional — include an email if you’d like a reply.
-                </p>
-                <div style={{ position: "absolute", left: -9999, width: 1, height: 1, overflow: "hidden" }} aria-hidden>
-                  <label htmlFor="feedback-company-website">Company website</label>
-                  <input
-                    id="feedback-company-website"
-                    name="companyWebsite"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    value={feedbackHoneypot}
-                    onChange={(e) => setFeedbackHoneypot(e.target.value)}
-                  />
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={css.label} htmlFor="feedback-name">Name (optional)</label>
-                  <input id="feedback-name" style={css.input} value={feedbackName} onChange={(e) => setFeedbackName(e.target.value)} placeholder="Your name" />
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={css.label} htmlFor="feedback-email">Email (optional)</label>
-                  <input id="feedback-email" type="email" style={css.input} value={feedbackEmail} onChange={(e) => setFeedbackEmail(e.target.value)} placeholder="you@example.com" />
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={css.label} htmlFor="feedback-message">Message</label>
-                  <textarea id="feedback-message" style={css.textarea} value={feedbackMessage} onChange={(e) => setFeedbackMessage(e.target.value)} placeholder="What’s on your mind?" rows={5} />
-                </div>
-                {feedbackError && (
-                  <div style={{ fontSize: 13, color: "#f87171", marginBottom: 12 }}>{feedbackError}</div>
-                )}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <button type="submit" style={css.btn("primary")} disabled={feedbackSubmitting}>
-                    {feedbackSubmitting ? "Sending…" : "Send feedback"}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Add Company Modal */}
       {modal === "addCo" && (
@@ -4245,7 +4136,7 @@ export default function App() {
             {coData && (
               <div style={css.infoBox}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 7, background: T.accentBg, border: `1px solid ${T.accent}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: T.accent, boxShadow: "none" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 8, background: T.accentBg, border: `1px solid ${T.accent}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: T.accent, boxShadow: "none" }}>
                     {initials(coData.name)}
                   </div>
                   <div>
@@ -4284,27 +4175,21 @@ export default function App() {
               <div style={{ ...css.modalTitle, marginBottom: 0 }}>Add Job</div>
               <button type="button" onClick={closeAddJobModal} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
             </div>
-            <div style={{ fontSize: 12.5, color: T.textSec, marginBottom: 18, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 14, color: T.textSec, marginBottom: 18, lineHeight: 1.45 }}>
               Import a job posting from a link, or fill in the details yourself.
             </div>
 
-            {/* Tab toggle */}
-            <div style={{
-              display: "flex",
-              gap: 4,
-              marginBottom: 14,
-              background: T.surfaceHover,
-              border: `1px solid ${T.border}`,
-              borderRadius: 12,
-              padding: 4,
-            }}>
-              {[["url", "From URL"], ["manual", "Fill in details"]].map(([mode, label]) => (
-                <button key={mode} onClick={() => { setJobInputMode(mode); setJobData(null); }} style={{
-                  flex: 1, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
-                  fontSize: 12.5, fontWeight: 500, transition: "all 0.2s", fontFamily: FONT_TEXT,
-                  background: jobInputMode === mode ? T.surface : "transparent",
-                  color: jobInputMode === mode ? T.text : T.textSec,
-                }}>
+            {/* Tab toggle — iOS-style segmented control */}
+            <div style={{ ...css.segmented.track, marginBottom: 14 }} role="tablist" aria-label="How to add a job">
+              {[["url", "From URL"], ["manual", "Fill in details"]].map(([mode, label], i) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={jobInputMode === mode}
+                  onClick={() => { setJobInputMode(mode); setJobData(null); }}
+                  style={css.segmented.segment(i, 2, jobInputMode === mode, { dense: true })}
+                >
                   {label}
                 </button>
               ))}
@@ -4352,14 +4237,17 @@ export default function App() {
                 </div>
                 <div style={{ marginBottom: 18 }}>
                   <label style={css.label}>Priority</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} role="group" aria-label="Priority">
                     {PRIORITIES.map((pr) => (
-                      <button key={pr.id} type="button" onClick={() => setManualPriority(pr.id)} style={{
-                        ...css.btn("sec"), fontSize: 12, padding: "5px 11px",
-                        borderColor: manualPriority === pr.id ? pr.color : T.border,
-                        color: manualPriority === pr.id ? pr.color : T.textSec,
-                        background: manualPriority === pr.id ? `${pr.color}18` : T.surface,
-                      }}>{pr.label}</button>
+                      <button
+                        key={pr.id}
+                        type="button"
+                        aria-pressed={manualPriority === pr.id}
+                        onClick={() => setManualPriority(pr.id)}
+                        style={css.choicePill(manualPriority === pr.id)}
+                      >
+                        {pr.label}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -4381,28 +4269,28 @@ export default function App() {
                     onKeyDown={e => e.key === "Enter" && extractFromUrl()}
                   />
                   <button style={{ ...css.btn("primary"), whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }} onClick={extractFromUrl} disabled={loading || !jobLink.trim()}>
-                    {loading ? <><Spinner /> Importing…</> : <><span style={{ fontSize: 14 }}>✨</span> Import</>}
+                    {loading ? <><Spinner /> Importing…</> : "Import"}
                   </button>
                 </div>
                 {loading && (
-                  <div style={{ marginTop: 10, fontSize: 12, color: T.textSec, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ marginTop: 10, fontSize: 14, color: T.textSec, display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: T.accent, animation: "pulse 1.2s infinite" }} />
                     {importStep === "ai" ? "Cleaning up with AI…" : "Scraping job posting…"}
                   </div>
                 )}
                 {fetchError === "blocked" && (
                   <div style={{ marginTop: 10, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 6, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 500 }}>
+                    <div style={{ fontSize: 14, color: "#f87171", fontWeight: 500 }}>
                       {isLinkedInHost(jobLink) ? "LinkedIn requires login to view job postings." : "This site blocks external access."}
                     </div>
                   </div>
                 )}
                 {fetchError && fetchError !== "blocked" && (
                   <div style={{ marginTop: 10, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 6, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 500, marginBottom: 4 }}>
+                    <div style={{ fontSize: 14, color: "#f87171", fontWeight: 500, marginBottom: 4 }}>
                       {fetchError === "failed" ? "Couldn't find the job posting." : "Import failed"}
                     </div>
-                    <div style={{ fontSize: 12, color: T.textSec }}>
+                    <div style={{ fontSize: 14, color: T.textSec }}>
                       {fetchError === "failed"
                         ? "Couldn't reach or parse this page. The site may require login or block scraping."
                         : fetchError}
@@ -4414,38 +4302,32 @@ export default function App() {
 
             {jobData && jobInputMode !== "manual" && (
               <div style={{ ...css.infoBox, marginTop: 16 }}>
-                {jobData._aiAssisted && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10, padding: "5px 9px", background: T.accentBg, border: `1px solid ${T.accent}40`, borderRadius: 6, width: "fit-content" }}>
-                    <span style={{ fontSize: 12 }}>✨</span>
-                    <span style={{ fontSize: 11, fontWeight: 500, color: T.accent, letterSpacing: "-0.01em", fontFamily: FONT_TEXT }}>
-                      AI-assisted import{jobData._aiFields?.length ? ` · filled ${jobData._aiFields.join(", ")}` : ""}
-                    </span>
-                  </div>
-                )}
                 {jobData.companyName && (
-                  <div style={{ fontSize: 11, fontWeight: 600, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text, letterSpacing: "-0.01em", lineHeight: 1.2, marginBottom: 6 }}>
                     {jobData.companyName}
-                    {companies.find(c => c.name.toLowerCase() === jobData.companyName?.toLowerCase())
-                      ? <span style={{ marginLeft: 6, color: T.accent, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· matched</span>
-                      : <span style={{ marginLeft: 6, color: T.textMuted, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· will be created</span>
-                    }
+                    {!companies.find(c => c.name.toLowerCase() === jobData.companyName?.toLowerCase()) && (
+                      <span style={{ fontWeight: 500, color: T.textMuted }}> · will be created</span>
+                    )}
                   </div>
                 )}
                 <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>{jobData.title}</div>
-                <div style={{ fontSize: 12.5, color: T.textSec, marginBottom: 10 }}>
+                <div style={{ fontSize: 14, color: T.textSec, marginBottom: 10 }}>
                   {jobData.location}{jobData.salary ? ` · ${jobData.salary}` : ""}
                 </div>
-                {jobData.summary && <div style={{ fontSize: 12.5, color: T.textSec, lineHeight: 1.6, marginBottom: 12 }}>{jobData.summary}</div>}
+                {jobData.summary && <div style={{ fontSize: 14, color: T.textSec, lineHeight: 1.6, marginBottom: 12 }}>{jobData.summary}</div>}
                 <div style={{ marginTop: 12 }}>
                   <label style={css.label}>Priority</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} role="group" aria-label="Priority">
                     {PRIORITIES.map((pr) => (
-                      <button key={pr.id} type="button" onClick={() => setJobPriority(pr.id)} style={{
-                        ...css.btn("sec"), fontSize: 12, padding: "5px 11px",
-                        borderColor: jobPriority === pr.id ? pr.color : T.border,
-                        color: jobPriority === pr.id ? pr.color : T.textSec,
-                        background: jobPriority === pr.id ? `${pr.color}18` : T.surface,
-                      }}>{pr.label}</button>
+                      <button
+                        key={pr.id}
+                        type="button"
+                        aria-pressed={jobPriority === pr.id}
+                        onClick={() => setJobPriority(pr.id)}
+                        style={css.choicePill(jobPriority === pr.id)}
+                      >
+                        {pr.label}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -4524,7 +4406,7 @@ export default function App() {
                 </div>
               )}
               <div className="scout-job-modal-actions" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: headerFgMuted, letterSpacing: "-0.01em", paddingRight: 4 }}>Added {timeAgo(activeJob.addedAt)}</span>
+                <span style={{ fontSize: 14, color: headerFgMuted, letterSpacing: "-0.01em", paddingRight: 4 }}>Added {timeAgo(activeJob.addedAt)}</span>
                 {activeJob.link && (
                   <a href={activeJob.link} target="_blank" rel="noopener noreferrer" style={btnOnBrand}>↗ View Job</a>
                 )}
@@ -4542,8 +4424,8 @@ export default function App() {
                 <button type="button" onClick={closeJobModal} style={{ ...btnOnBrand, padding: 0, width: 36, fontSize: 20 }} aria-label="Close">×</button>
               </div>
             </div>
-            {/* Row 2: Job title */}
-            <div style={{ marginBottom: 8 }}>
+            {/* Row 2–3: Title then location · salary — flush left, shared baseline */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6 }}>
               <EditableField
                 isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "title"}
                 value={activeJob.title}
@@ -4552,35 +4434,37 @@ export default function App() {
                 onEditingChange={setEditingValue}
                 onSave={saveEdit}
                 placeholder="Job title"
-                displayStyle={{ fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: headerFg, lineHeight: 1.25, letterSpacing: "-0.02em" }}
+                displayInset={false}
+                displayStyle={{ fontSize: 22, fontWeight: 600, fontFamily: FONT_DISPLAY, color: headerFg, lineHeight: 1.2, letterSpacing: "-0.02em", display: "block" }}
                 inputStyle={{ ...css.input, background: T.surface, color: T.text }}
               />
-            </div>
-            {/* Row 3: Location · Salary */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", alignItems: "center", fontSize: 13, color: headerFgMuted }}>
-              <EditableField
-                isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "location"}
-                value={activeJob.location}
-                editingValue={editingValue}
-                onStartEdit={() => startEdit("job", activeJob.id, "location", activeJob.location)}
-                onEditingChange={setEditingValue}
-                onSave={saveEdit}
-                placeholder="Location"
-                displayStyle={{ fontSize: 13, color: headerFgMuted }}
-                inputStyle={{ ...css.input, background: T.surface, color: T.text }}
-              />
-              <span style={{ opacity: 0.7 }}>·</span>
-              <EditableField
-                isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "salary"}
-                value={activeJob.salary}
-                editingValue={editingValue}
-                onStartEdit={() => startEdit("job", activeJob.id, "salary", activeJob.salary)}
-                onEditingChange={setEditingValue}
-                onSave={saveEdit}
-                placeholder="Salary"
-                displayStyle={{ fontSize: 13, color: headerFgMuted }}
-                inputStyle={{ ...css.input, background: T.surface, color: T.text }}
-              />
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0 10px", fontSize: 14, color: headerFgMuted, lineHeight: 1.35 }}>
+                <EditableField
+                  isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "location"}
+                  value={activeJob.location}
+                  editingValue={editingValue}
+                  onStartEdit={() => startEdit("job", activeJob.id, "location", activeJob.location)}
+                  onEditingChange={setEditingValue}
+                  onSave={saveEdit}
+                  placeholder="Location"
+                  displayInset={false}
+                  displayStyle={{ fontSize: 14, fontWeight: 400, color: headerFgMuted, lineHeight: "inherit", letterSpacing: "-0.01em" }}
+                  inputStyle={{ ...css.input, background: T.surface, color: T.text }}
+                />
+                <span style={{ opacity: 0.65, userSelect: "none" }} aria-hidden>·</span>
+                <EditableField
+                  isEditing={editing?.context === "job" && editing?.id === activeJob.id && editing?.field === "salary"}
+                  value={activeJob.salary}
+                  editingValue={editingValue}
+                  onStartEdit={() => startEdit("job", activeJob.id, "salary", activeJob.salary)}
+                  onEditingChange={setEditingValue}
+                  onSave={saveEdit}
+                  placeholder="Salary"
+                  displayInset={false}
+                  displayStyle={{ fontSize: 14, fontWeight: 400, color: headerFgMuted, lineHeight: "inherit", letterSpacing: "-0.01em" }}
+                  inputStyle={{ ...css.input, background: T.surface, color: T.text }}
+                />
+              </div>
             </div>
             </div>
               );
@@ -4602,7 +4486,7 @@ export default function App() {
                   onClick={e => { e.stopPropagation(); startEdit("job", activeJob.id, "summary", activeJob.summary); }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "currentColor"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "transparent"; }}
-                  style={{ fontSize: 13, color: T.textSec, lineHeight: 1.65, cursor: "pointer", borderRadius: 4, padding: "2px 6px", margin: "-2px -6px", border: "1px solid transparent", transition: "border-color 0.15s" }}
+                  style={{ fontSize: 14, color: T.textSec, lineHeight: 1.65, cursor: "pointer", borderRadius: 4, padding: "2px 6px", margin: "-2px -6px", border: "1px solid transparent", transition: "border-color 0.15s" }}
                 >
                   {activeJob.summary ? (
                     <div className="job-summary-html" style={{ fontFamily: FONT_TEXT }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(activeJob.summary) }} />
@@ -4625,7 +4509,7 @@ export default function App() {
                   onSave={saveEdit}
                   placeholder="e.g. 2025-03-01"
                   emptyLabel="Not set"
-                  displayStyle={{ fontSize: 13, color: T.text }}
+                  displayStyle={{ fontSize: 14, color: T.text }}
                   inputStyle={css.input}
                   inputType="date"
                 />
@@ -4641,7 +4525,7 @@ export default function App() {
                   onSave={saveEdit}
                   placeholder="Name, email, or title"
                   emptyLabel="Not set"
-                  displayStyle={{ fontSize: 13, color: T.text }}
+                  displayStyle={{ fontSize: 14, color: T.text }}
                   inputStyle={css.input}
                 />
               </div>
@@ -4683,44 +4567,51 @@ export default function App() {
               isDark={isDark}
             />
 
+            <div style={{ marginTop: 24, paddingBottom: 24 }}>
             <div style={{ marginBottom: 18 }}>
               <label style={css.label}>Priority</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} role="group" aria-label="Priority">
                 {PRIORITIES.map((pr) => (
-                  <button key={pr.id} type="button" onClick={() => setJobPriorityLevel(activeJob.id, pr.id)} style={{
-                    ...css.btn("sec"), fontSize: 12, padding: "5px 11px",
-                    borderColor: (activeJob.priority || "medium") === pr.id ? pr.color : T.border,
-                    color: (activeJob.priority || "medium") === pr.id ? pr.color : T.textSec,
-                    background: (activeJob.priority || "medium") === pr.id ? `${pr.color}18` : T.surface,
-                  }}>{pr.label}</button>
+                  <button
+                    key={pr.id}
+                    type="button"
+                    aria-pressed={(activeJob.priority || "medium") === pr.id}
+                    onClick={() => setJobPriorityLevel(activeJob.id, pr.id)}
+                    style={css.choicePill((activeJob.priority || "medium") === pr.id)}
+                  >
+                    {pr.label}
+                  </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ marginBottom: 18 }}>
+            <div>
               <label style={css.label}>Status</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {STATUSES.map(st => (
-                  <button key={st.id} onClick={() => moveJob(activeJob.id, st.id)} style={{
-                    ...css.btn("sec"),
-                    fontSize: 12,
-                    padding: "5px 11px",
-                    borderColor: jobStatus(activeJob) === st.id ? st.color : T.border,
-                    color: jobStatus(activeJob) === st.id ? st.color : T.textSec,
-                    background: jobStatus(activeJob) === st.id ? `${st.color}18` : T.surface,
-                  }}>{st.label}</button>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} role="group" aria-label="Application status">
+                {STATUSES.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    aria-pressed={jobStatus(activeJob) === st.id}
+                    onClick={() => moveJob(activeJob.id, st.id)}
+                    style={css.choicePill(jobStatus(activeJob) === st.id)}
+                  >
+                    {st.label}
+                  </button>
                 ))}
               </div>
+            </div>
             </div>
 
             {/* Requirements/nice-to-haves hidden for now — data still saved on job object */}
 
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 24, borderTop: `1px solid ${T.border}`, paddingTop: 28 }}>
               <label style={css.label}>Notes</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {getNotesList(activeJob).slice().reverse().map((note) => (
                   <div
                     key={note.id}
+                    className="scout-job-note-card"
                     style={{
                       background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255, 255, 255, 1)",
                       borderRadius: 16,
@@ -4730,51 +4621,92 @@ export default function App() {
                       outline: "none",
                       width: "100%",
                       boxSizing: "border-box",
-                      overflow: "hidden",
+                      overflow: "visible",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0, flex: "1 1 auto" }}>
                         {(() => {
                           const st = getStatusMetaSafe(note.stage || jobStatus(activeJob));
                           return (
-                            <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${st.color}15`, color: st.color }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: T.text, letterSpacing: "-0.01em" }}>
                               {st.label}
                             </span>
                           );
                         })()}
                         {note.type === "stage_change" ? null : null}
                       </div>
-                      <span style={{ fontSize: 10.5, color: T.textMuted }}>{formatNoteTime(note.createdAt)}</span>
+                      <span style={{ fontSize: 10.5, color: T.textMuted, flexShrink: 0 }}>{formatNoteTime(note.createdAt)}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", letterSpacing: "-0.03px" }}>
+                    <div style={{ fontSize: 14, color: T.text, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", letterSpacing: "-0.03px" }}>
                       {note.type === "stage_change"
                         ? `${getStatusMeta(note.previousStage)?.label || "—"} → ${getStatusMeta(note.stage)?.label || getStatusMetaSafe(note.stage)?.label || "—"}${note.text ? `\n${note.text}` : ""}`
                         : note.text}
                     </div>
                     {/* context removed */}
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, width: "100%" }}>
+                    <div className="scout-note-remove-wrap">
                       <button
                         type="button"
                         onClick={() => deleteNote(activeJob.id, note.id)}
-                        style={{ background: "none", border: "none", color: T.textMuted, fontSize: 11, cursor: "pointer", padding: "2px 6px", maxWidth: "100%" }}
+                        style={{
+                          background: isDark ? "rgba(38,38,38,0.96)" : "rgba(255,255,255,0.96)",
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 8,
+                          color: T.textSec,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          padding: "5px 10px",
+                          boxShadow: isDark ? "0 2px 8px rgba(0,0,0,0.35)" : "0 2px 8px rgba(0,0,0,0.08)",
+                          fontFamily: FONT_TEXT,
+                        }}
                       >
                         Remove
                       </button>
                     </div>
                   </div>
                 ))}
-                <div className="scout-job-notes-add" style={{ display: "flex", gap: 8, alignItems: "center", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${T.border}`, padding: 10, borderRadius: 16 }}>
+                <div
+                  className="scout-job-notes-add"
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    alignSelf: "stretch",
+                  }}
+                >
                   <textarea
-                    style={{ ...css.textarea, minHeight: 56, resize: "vertical", flex: 1 }}
+                    style={{
+                      width: "100%",
+                      minHeight: 72,
+                      resize: "vertical",
+                      display: "block",
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 16,
+                      padding: "10px 104px 40px 12px",
+                      fontSize: 14,
+                      fontFamily: FONT_TEXT,
+                      lineHeight: 1.5,
+                      letterSpacing: "-0.01em",
+                      color: T.text,
+                      background: isDark ? "rgba(255,255,255,0.04)" : T.surface,
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
                     value={newNoteInput}
                     onChange={e => setNewNoteInput(e.target.value)}
                     placeholder="Add a note (Interview notes, prep, gut feelings, dates to remember...)"
-                    rows={2}
+                    rows={3}
                   />
                   <button
                     type="button"
-                    style={css.btn("primary")}
+                    style={{
+                      ...css.btn("primary"),
+                      position: "absolute",
+                      right: 10,
+                      bottom: 10,
+                      zIndex: 1,
+                      whiteSpace: "nowrap",
+                    }}
                     onClick={() => { addNote(activeJob.id, newNoteInput); setNewNoteInput(""); }}
                     disabled={!newNoteInput.trim()}
                   >
@@ -4815,7 +4747,7 @@ export default function App() {
                 <button type="button" onClick={skip} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 20, lineHeight: 1, color: T.textMuted }} aria-label="Close">×</button>
               </div>
 
-              <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 10 }}>
+              <div style={{ fontSize: 14, color: T.textMuted, marginBottom: 10 }}>
                 Stage moved: <span style={{ fontWeight: 700, color: prev.color }}>{prev.label}</span> → <span style={{ fontWeight: 700, color: next.color }}>{next.label}</span>
               </div>
 
