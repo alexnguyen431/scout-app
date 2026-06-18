@@ -939,7 +939,7 @@ async function handleClaudeProxy(body) {
   }
   const { userMsg, systemMsg, useWebSearch = false } = body;
   // Use cheaper Haiku when we already have content (extraction only); Sonnet for web search
-  const model = useWebSearch ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
+  const model = useWebSearch ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001";
   const apiBody = {
     model,
     max_tokens: useWebSearch ? 4096 : 2000,

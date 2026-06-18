@@ -268,7 +268,7 @@ function extractStripeLocationFromText(text) {
 async function handleClaudeProxy(body) {
   if (!ANTHROPIC_KEY) throw new Error("Missing ANTHROPIC_API_KEY on server");
   const { userMsg, systemMsg, useWebSearch = false } = body;
-  const model = useWebSearch ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
+  const model = useWebSearch ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001";
   const apiBody = {
     model,
     max_tokens: useWebSearch ? 4096 : 2000,
